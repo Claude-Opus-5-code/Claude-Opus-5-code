@@ -1,0 +1,3 @@
+{
+  "tests/contract/test_overchat_provider_contract.py::test_provider_package_does_not_import_workspace_working": true
+}
