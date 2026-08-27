@@ -70,6 +70,24 @@ def test_falsy_delta_is_skipped() -> None:
     assert accumulate_reply([d(""), d("real"), d("")]) == "real"
 
 
+def test_falsy_delta_emits_no_event_at_all() -> None:
+    """Source L283 skips the frame ENTIRELY, it does not yield an empty delta.
+
+    `accumulate_reply` alone cannot prove this: concatenating "" is invisible,
+    so removing the `if delta:` guard still produces the same joined string.
+    The difference is only observable at event/chunk granularity, which is what
+    a streaming consumer actually sees. Verified by mutation: flipping
+    `if delta:` to `if True:` survives the accumulate-only assertion but fails
+    this one (README §33 - a test must prove the intended condition).
+    """
+    lines = [d("a"), d(""), d("b")]
+
+    assert list(iter_events(lines)) == [DeltaEvent(text="a"), DeltaEvent(text="b")]
+    # No zero-length chunk is ever surfaced to a streaming caller.
+    assert list(iter_text_deltas(lines)) == ["a", "b"]
+    assert "" not in list(iter_text_deltas(lines))
+
+
 def test_missing_delta_key_defaults_to_empty_and_is_skipped() -> None:
     """Source L282 uses .get("delta", "")."""
     line = b'data: {"event": "response.output_text.delta", "data": {}}'
