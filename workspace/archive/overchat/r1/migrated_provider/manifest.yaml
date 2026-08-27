@@ -1,0 +1,261 @@
+---
+# Provider manifest — follows V3 30_PROVIDER_ARCHITECTURE_AND_PLUGIN_SPEC.md §7.
+#
+# EVIDENCE RULE (README §21): every capability, operation and model declared
+# below carries `source` (proof in the original provider) and `target` (where it
+# is implemented). Anything the source does not establish is declared false /
+# unsupported / unknown — never guessed. Source line numbers refer to
+# 01.02_overchat_gpt5_2_gemini3_5_bypass.py
+# sha256 d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470
+
+id: overchat
+name: Overchat
+version: 1.0.0
+
+# README §21: production routing is NOT auto-enabled. No governance file in this
+# repository authorizes activation, so the provider ships inert.
+status: disabled
+activation: integration_pending
+is_functional: true
+is_template: false
+
+provenance:
+  source_file: 01.02_overchat_gpt5_2_gemini3_5_bypass.py
+  source_sha256: d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470
+  source_tree_sha256: 5cb5f4f423f44a6ed28341002ff867aa315cb9cc24d3f06bcf5cf0645936daa9
+  source_lines: 403
+  inbox_path: workspace/inbox/gemini--flash/
+  upstream_base_url: https://api.overchat.ai
+  revision: r1
+  # The inbox folder name (`gemini--flash`) is a MODEL hint, not a provider
+  # identity. Provider key is `overchat` per V3 §3.
+  identity_note: >-
+    Upstream gateway is Overchat, serving three vendor models; naming the
+    provider after one model would collapse Model into Provider (V3 §3).
+
+auth:
+  # The source sends NO credential anywhere. Identity is an auto-provisioned
+  # guest derived from the x-device-* headers (source L191-203); live capture
+  # confirmed isGuest=true.
+  types:
+    - none_guest_device
+  supports_refresh: false
+  credential_required: false
+  evidence:
+    source: L191-203 (GET /v1/auth/me, no credential in any header)
+    target: runtime/session.py:resolve_user_id
+    live: HTTP 200 with `id`; redacted capture in working evidence
+
+account_pool:
+  # README §29: not invented. The source mints a throwaway guest per request.
+  supported: false
+  lease_required: false
+  fencing_required: false
+  evidence:
+    source: absent — no pool, lease, cooldown, rotation, or scoring
+    target: not implemented
+
+capabilities:
+  # V3 §7 capability keys. true only where the source proves it.
+  chat: true
+  reasoning: false
+  code: false
+  vision_input: false
+  image_generation: false
+  audio_input: false
+  audio_output: false
+  file_upload: false
+  browser: false
+  agent_module: false
+
+# Normalized CapabilityId values (core/contracts/providers.py) actually declared.
+declared_capabilities:
+  - text_generation
+  - streaming
+
+declared_modalities:
+  - text
+
+capability_evidence:
+  text_generation:
+    source: L241-316 (POST /v2/chat/responses, reply accumulated and returned)
+    target: operations/text_generation.py:generate_text
+    classification: SUPPORTED
+  streaming:
+    source: "L253 (`stream: True`), L259 (Accept text/event-stream), L272-290 SSE loop"
+    target: operations/text_generation.py:stream_text + runtime/parser.py
+    classification: SUPPORTED
+
+unsupported_capabilities:
+  # Declared explicitly so the adapter rejects them (V3 §5) instead of
+  # silently ignoring. Each is absent from the source.
+  - vision_input
+  - image_generation
+  - audio_stt
+  - audio_tts
+  - embeddings
+  - rerank
+  - moderation
+  - file_upload
+  - provider_agent
+
+operations:
+  - id: generate_text
+    source: L176-324 (send_chat_request)
+    target: operations/text_generation.py:generate_text
+    streaming_variant: operations/text_generation.py:stream_text
+
+request_flow:
+  # Order is contractual (source L191-269). Only step 2 aborts the flow.
+  - step: 1
+    action: mint device identity
+    source: L191
+    target: runtime/headers.py:build_mobile_headers
+    aborts_on_failure: false
+  - step: 2
+    action: GET /v1/auth/me
+    timeout_seconds: 15
+    source: L195-203
+    target: runtime/session.py:resolve_user_id
+    aborts_on_failure: true
+  - step: 3
+    action: PATCH /v1/chat/{user_id}/{chat_uuid}/generateChatTitle
+    timeout_seconds: 15
+    source: L213-223
+    target: runtime/request.py:generate_chat_title
+    aborts_on_failure: false
+    note: fire-and-forget; status ignored and exceptions swallowed in source
+  - step: 4
+    action: POST /v1/chat/{user_id}
+    timeout_seconds: 15
+    source: L227-235
+    target: runtime/request.py:create_chat_session
+    aborts_on_failure: false
+    note: fire-and-forget; status ignored and exceptions swallowed in source
+  - step: 5
+    action: POST /v2/chat/responses (SSE)
+    timeout_seconds: 120
+    source: L241-269
+    target: runtime/request.py:open_response_stream
+    aborts_on_failure: true
+
+models:
+  # README §27: discovery is STATIC. The source has no model-list endpoint;
+  # these three entries are the literal contents of Config.available_models.
+  discovery: static
+  default_persona_id: gemini-3-5-flash
+  default_model: google/gemini-3.5-flash
+  unknown_model_policy: passthrough
+  unknown_model_evidence:
+    source: L364-370 — unknown key becomes BOTH persona_id and model, unvalidated
+    target: discovery/models.py:resolve_model
+  static_models:
+    - persona_id: gpt-5-2
+      model: gpt-5.2-2025-12-11
+      source: L59-62
+    - persona_id: gemini-3-5-flash
+      model: google/gemini-3.5-flash
+      source: L63-66
+    - persona_id: free-chat-gpt-landing
+      model: openai/gpt-4.1-nano
+      source: L67-70
+
+streaming:
+  supported: true
+  protocol: sse
+  delta_event: response.output_text.delta
+  delta_path: data.data.delta
+  terminator: "[DONE]"
+  error_event: error
+  error_event_terminal: false
+  evidence:
+    source: L272-290
+    target: runtime/parser.py
+  note: >-
+    The `error` event is reported but NON-TERMINAL in the source: the stream
+    keeps reading after it. Preserved verbatim (README §24).
+
+rate_limits:
+  # README §16: no limits invented. The source has no 429 branch and reads no
+  # Retry-After header. Only boundary-level classification exists.
+  strategy: unknown
+  declared_by_source: false
+  dimensions: []
+
+retries:
+  supported: false
+  evidence:
+    source: absent — zero retry/backoff logic anywhere in the source
+    target: not implemented
+
+polling:
+  supported: false
+  evidence:
+    source: absent — response is synchronous SSE only
+
+assets:
+  upload: false
+  download: false
+  evidence:
+    source: >-
+      absent. `lastUploadUrl` appears in the live auth/me body but the source
+      implements no upload or download path.
+
+health:
+  # SANITIZED (adapter-added): the source has no health check. V3 §4.1/§11
+  # require one, so it reuses ONLY the existing read-only auth/me call.
+  checks:
+    - endpoint_available
+  scope: provider_only
+  account_health_supported: false
+  target: health.py:check_health
+  classification: SANITIZED
+
+errors:
+  # SANITIZED (adapter-added): the source only printed and returned None.
+  mapping: overchat_error_map
+  target: runtime/errors.py
+  classification: SANITIZED
+  success_statuses: [200, 201]
+  body_truncation:
+    auth: 150
+    generation: 250
+
+quarantined:
+  # README §17: preserved, isolated, documented — NOT removed.
+  - item: fake IP generation + X-Forwarded-For / X-Real-IP / Client-IP headers
+    source: L100-102, L113-115
+    target: runtime/headers.py
+    default_enabled: true
+    reason: >-
+      Live differential shows guest admission succeeded WITHOUT these headers,
+      and later 502s occurred both with and without them, so no server-side
+      effect is established. Evidence does not authorize removal, so the source
+      default (enabled) is kept and the decision is escalated to the operator.
+
+unknown:
+  - item: non-delta / non-error SSE event types
+    source: L281-288 handles exactly two event types
+    reason: >-
+      Whether upstream emits other event types is not established by the source
+      and cannot be closed offline. Such frames are ignored, exactly as in the
+      source.
+
+preserved_oddities:
+  # Explicitly retained despite being awkward under V3 (README §17/§18).
+  - 'authorization: "undefined"' # literal JS undefined string, source L263
+  - empty system message placed after the user message # source L245
+  - fire-and-forget title/init with bare `except Exception: pass`
+  - silent skip of malformed SSE JSON frames
+  - max_lines/max_chars falsy checks (0 behaves as "no limit")
+  - hardcoded 15s timeouts on 3 calls vs configurable 120s on the stream
+  - duplicate header mint in main() whose value is discarded (banner only)
+  - Arabic UI strings and statistics labels
+
+security:
+  contains_credentials: false
+  secret_scan: clean
+  notes: >-
+    No credential exists to leak: the provider is credential-free by design.
+    Normalized errors never copy exception messages (which can contain
+    URLs/hosts) into safe_message.
