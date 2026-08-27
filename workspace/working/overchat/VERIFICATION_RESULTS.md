@@ -136,7 +136,22 @@ STANDALONE_OK
 * the 4-step request sequence is intact with the workspace absent;
 * streaming yields per-delta chunks;
 * no module resolved from `workspace`/`working`;
-* `providers/finished/overchat/tests` → **226 passed** with the workspace gone.
+* `providers/finished/overchat/tests` → **225 passed, 2 skipped** with the
+  workspace gone, re-verified this cycle from `/tmp/sc_test` after the migration
+  workspace was moved out of the repository entirely.
+
+The two skips are legitimate and self-declaring, not silent passes:
+
+```text
+SKIPPED [1] overchat/tests/test_health.py:96: Core not on sys.path (standalone mode)
+SKIPPED [1] overchat/tests/test_provider.py:52: Core not on sys.path (standalone package mode)
+```
+
+They cover Core-contract conformance, which is unprovable when Core is by
+definition absent; both run and pass in the in-repo suite. An earlier revision
+of this document recorded "226 passed" for this run, which was wrong — the true
+result is 225 passed + 2 skipped. Corrected here rather than left to flatter the
+result (README §49).
 
 Unsupported capabilities are rejected rather than silently ignored:
 `run_operation('image_generation', ...)` raises `OverchatError`
