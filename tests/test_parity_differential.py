@@ -24,6 +24,7 @@ import importlib.util
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -69,6 +70,21 @@ def _load_original(transport: RecordingTransport) -> ModuleType:
     The file is read but NEVER written (README §9). We inject a fake `requests`
     module into the module's namespace after execution, so the source's own
     `import requests` is neutralized for the duration of the test.
+
+    SOURCE IMMUTABILITY HAZARD (README §9): the original persists its reply via
+    `BASE_DIR / cfg.output_file` (source L309-311), where `BASE_DIR` is the
+    SCRIPT'S OWN directory (source L98:
+    `BASE_DIR = pathlib.Path(__file__).resolve().parent`). Executing the source
+    unmodified therefore creates `chat_reply.txt` INSIDE
+    `workspace/inbox/gemini--flash/`, which pollutes the immutable source set
+    and breaks the §10 source tree hash. We repoint the module-level `BASE_DIR`
+    at a per-load temporary directory so the side-effect file lands outside the
+    repository.
+
+    This is a test-harness redirection only (README §18 mechanical adaptation
+    for testability): it changes no request, header, payload, or parsing
+    behavior, and the write itself still executes so the code path stays
+    covered. The source file on disk is never written.
     """
     assert SOURCE_PATH.exists(), f"original source missing: {SOURCE_PATH}"
 
@@ -78,7 +94,21 @@ def _load_original(transport: RecordingTransport) -> ModuleType:
 
     # Prevent the script's __main__ guard from running anything.
     module.__name__ = "overchat_original_ref"
-    spec.loader.exec_module(module)
+
+    # Loading by file path makes CPython drop a `__pycache__/` next to the
+    # source, i.e. inside the immutable inbox (README §9 + §48 cache hygiene).
+    # Suppress bytecode writing for the duration of the load.
+    _prev_dont_write = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = _prev_dont_write
+
+    # Redirect the reply-file side effect away from the immutable inbox (§9).
+    # `tempfile.mkdtemp` is not auto-removed, so the write target survives for
+    # the whole test; it lives under the OS temp dir, never in the repo.
+    module.BASE_DIR = Path(tempfile.mkdtemp(prefix="overchat_orig_ref_"))  # type: ignore[attr-defined]
 
     # Replace the real `requests` with the recording transport shim. The source
     # calls requests.get/patch/post with keyword args that our transport
@@ -406,3 +436,65 @@ def test_long_prompt_truncation_parity() -> None:
     assert len(migrated[1]["body"]["userPrompt"]) == 300
     assert migrated[3]["body"]["messages"][0]["content"] == long_prompt
     assert original == migrated
+
+
+# --------------------------------------------------------------------------
+# SOURCE IMMUTABILITY GUARD (README §9 / §10)
+# --------------------------------------------------------------------------
+
+
+def test_running_original_does_not_pollute_immutable_inbox() -> None:
+    """Executing the ORIGINAL must not create/modify files in `workspace/inbox/`.
+
+    Regression guard for a real defect in this harness: the source writes its
+    reply to `BASE_DIR / cfg.output_file` with `BASE_DIR` = the script's own
+    directory, so an unredirected load dropped `chat_reply.txt` into the
+    immutable source set and invalidated the §10 source tree hash.
+
+    This asserts the directory inventory and the source's own SHA-256 are both
+    unchanged across a full generation run, and that the reply file really was
+    written somewhere else (proving the code path executed rather than being
+    skipped).
+    """
+    import hashlib
+
+    inbox_dir = SOURCE_PATH.parent
+
+    def inventory() -> set[str]:
+        return {p.name for p in inbox_dir.iterdir()}
+
+    def source_digest() -> str:
+        return hashlib.sha256(SOURCE_PATH.read_bytes()).hexdigest()
+
+    # Start from a clean baseline so a cache dir left by an earlier test in the
+    # same session cannot mask a genuine new pollution.
+    for stale in inbox_dir.glob("__pycache__"):
+        if stale.is_dir():
+            for child in stale.iterdir():
+                child.unlink()
+            stale.rmdir()
+
+    before_files = inventory()
+    before_hash = source_digest()
+    assert before_files == {SOURCE_PATH.name}, (
+        f"inbox is not pristine before the run: {before_files}"
+    )
+
+    transport = _script_transport()
+    module = _load_original(transport)
+    reply = module.send_chat_request(PROMPT, module.Config(), "immutability")
+
+    # The generation path really ran (otherwise this test would be vacuous).
+    assert reply == "مرحبا"
+
+    assert inventory() == before_files, (
+        "executing the original created or removed files inside the immutable "
+        f"inbox: {inventory() ^ before_files}"
+    )
+    assert source_digest() == before_hash, "the original source file was modified"
+
+    # And the side-effect write landed in the redirected temp dir instead.
+    written = module.BASE_DIR / module.Config().output_file
+    assert written.exists(), "reply file was not written to the redirected BASE_DIR"
+    assert written.read_text(encoding="utf-8") == "مرحبا"
+    assert inbox_dir not in written.parents
