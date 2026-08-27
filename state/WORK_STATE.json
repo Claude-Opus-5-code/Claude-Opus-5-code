@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "cycle_status": "IN_PROGRESS",
+  "next_action": "FINALIZE_PROVIDER_CYCLE",
+  "provider_key": "overchat",
+  "revision": "r1",
+  "note": "This file is a RECOVERY POINTER, not proof (README \u00a78). Every claim below must be re-verified against filesystem/gate evidence on resume.",
+  "input_contract": {
+    "inbox_path": "workspace/inbox/gemini--flash/",
+    "provider_sets_detected": 1,
+    "decision": "PROCESS_SINGLE_PROVIDER"
+  },
+  "source_identity": {
+    "file_count": 1,
+    "files": [
+      {
+        "path": "01.02_overchat_gpt5_2_gemini3_5_bypass.py",
+        "size_bytes": 20308,
+        "lines": 403,
+        "sha256": "d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470"
+      }
+    ],
+    "tree_sha256": "5cb5f4f423f44a6ed28341002ff867aa315cb9cc24d3f06bcf5cf0645936daa9",
+    "source_changed": false,
+    "sanitized_snapshot_required": false,
+    "sanitized_snapshot_reason": "Source contains no credentials (guest/no-auth provider); README \u00a79 makes the sanitized derivative conditional."
+  },
+  "stage_ledger": [
+    {
+      "stage": "REPOSITORY_REALITY",
+      "status": "DONE",
+      "evidence": "git status clean; HEAD inspected; full file inventory taken"
+    },
+    {
+      "stage": "SOURCE_HASH_LOCK",
+      "status": "DONE",
+      "evidence": "workspace/working/overchat/source_original_hash.json recomputed and matched live"
+    },
+    {
+      "stage": "COMPLETE_RECONNAISSANCE",
+      "status": "DONE",
+      "evidence": "CAPABILITY_INVENTORY.md: 1/1 files inspected, execution graph traced"
+    },
+    {
+      "stage": "CAPABILITY_INVENTORY",
+      "status": "DONE",
+      "evidence": "37 rows classified in CAPABILITY_INVENTORY.md"
+    },
+    {
+      "stage": "MIGRATION_MAP",
+      "status": "DONE",
+      "evidence": "MIGRATION_MAP.md: all L1-403 accounted for, nothing-dropped ledger present"
+    },
+    {
+      "stage": "MIGRATION_PLAN",
+      "status": "DONE",
+      "evidence": "MIGRATION_PLAN.md present with 15 sections"
+    },
+    {
+      "stage": "IMPLEMENTATION",
+      "status": "DONE",
+      "evidence": "providers/finished/overchat: config, health, provider, discovery, operations, runtime(5), legacy(6) + package __init__ files"
+    },
+    {
+      "stage": "MANIFEST",
+      "status": "DONE",
+      "evidence": "providers/finished/overchat/manifest.yaml"
+    },
+    {
+      "stage": "DETERMINISTIC_TESTS",
+      "status": "DONE",
+      "evidence": "providers/finished/overchat/tests/ + tests/contract/test_overchat_provider_contract.py"
+    },
+    {
+      "stage": "DIFFERENTIAL_PARITY",
+      "status": "DONE",
+      "evidence": "tests/test_parity_differential.py drives ORIGINAL source module and migrated package through one shared recording transport"
+    },
+    {
+      "stage": "LIVE_VERIFICATION",
+      "status": "PARTIAL",
+      "evidence": "guest auth GET /v1/auth/me observed HTTP 200 with id (redacted capture). Generation path blocked by upstream 502 (Probe F byte-identical replay also 502)."
+    },
+    {
+      "stage": "STANDALONE_CERTIFICATION",
+      "status": "DONE",
+      "evidence": "provider tests executed with workspace/working/overchat moved aside; see VERIFICATION_RESULTS.md"
+    },
+    {
+      "stage": "SECURITY_VERIFICATION",
+      "status": "DONE",
+      "evidence": "check_provider_repo.sh secret scan clean; no credential values in portable artifacts"
+    },
+    {
+      "stage": "ARCHIVE",
+      "status": "DONE",
+      "evidence": "workspace/archive/overchat/r1/"
+    }
+  ],
+  "classification_totals": {
+    "SUPPORTED": 24,
+    "SANITIZED": 3,
+    "QUARANTINED": 3,
+    "UNSUPPORTED": 5,
+    "UNKNOWN": 1,
+    "UNVERIFIED": 0
+  },
+  "declared_capabilities": [
+    "text_generation",
+    "streaming"
+  ],
+  "activation": {
+    "status": "disabled",
+    "activation": "integration_pending",
+    "reason": "README \u00a721 forbids auto-enabling production routing; no governance file in this repo authorizes activation."
+  },
+  "open_operator_decisions": [
+    "Quarantined IP-spoof headers (X-Forwarded-For / X-Real-IP / Client-IP) are preserved and default-ON to match source behavior, despite live evidence showing guest admission succeeds without them. Removal requires an operator decision."
+  ],
+  "known_limitations": [
+    "Live generation-path verification blocked by upstream 502 on api.overchat.ai (provider-side/environmental, not migration-caused).",
+    "Non-delta/non-error SSE event types remain UNKNOWN: the source establishes only two event types, so no offline evidence can close this."
+  ],
+  "paths": {
+    "finished_provider": "providers/finished/overchat/",
+    "working": "workspace/working/overchat/",
+    "archive": "workspace/archive/overchat/r1/"
+  },
+  "git_policy": "External auto-uploader manages synchronization (README \u00a752): no push, no force-push, no remote reconciliation performed."
+}
