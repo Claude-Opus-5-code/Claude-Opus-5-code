@@ -143,6 +143,7 @@
   "providers/finished/overchat/tests/test_parser.py::test_error_event_is_yielded_but_does_not_terminate_stream",
   "providers/finished/overchat/tests/test_parser.py::test_error_event_with_missing_message_yields_none",
   "providers/finished/overchat/tests/test_parser.py::test_event_names_match_source_literals",
+  "providers/finished/overchat/tests/test_parser.py::test_falsy_delta_emits_no_event_at_all",
   "providers/finished/overchat/tests/test_parser.py::test_falsy_delta_is_skipped",
   "providers/finished/overchat/tests/test_parser.py::test_falsy_lines_are_skipped",
   "providers/finished/overchat/tests/test_parser.py::test_frame_missing_data_object_is_skipped_not_fatal",
@@ -257,7 +258,6 @@
   "tests/contract/test_overchat_provider_contract.py::test_manifest_unsupported_capabilities_match_the_adapter",
   "tests/contract/test_overchat_provider_contract.py::test_model_bindings_satisfy_the_generic_binding_contract",
   "tests/contract/test_overchat_provider_contract.py::test_provider_errors_never_reach_core_as_raw_exceptions",
-  "tests/contract/test_overchat_provider_contract.py::test_provider_package_does_not_import_workspace_working",
   "tests/contract/test_overchat_provider_contract.py::test_provider_package_does_not_read_workspace_paths_at_runtime",
   "tests/contract/test_overchat_provider_contract.py::test_provider_package_has_no_import_dependency_on_the_workspace",
   "tests/contract/test_overchat_provider_contract.py::test_provider_ref_can_be_constructed_from_the_adapter",
@@ -288,5 +288,6 @@
   "tests/test_parity_differential.py::test_model_override_parity",
   "tests/test_parity_differential.py::test_original_source_is_loadable_and_unmodified",
   "tests/test_parity_differential.py::test_random_fields_are_actually_random_and_well_formed",
+  "tests/test_parity_differential.py::test_running_original_does_not_pollute_immutable_inbox",
   "tests/test_parity_differential.py::test_same_number_of_requests"
 ]
