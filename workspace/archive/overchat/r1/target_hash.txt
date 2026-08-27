@@ -1,0 +1,4 @@
+target_tree_sha256: 5a816955f9c12f0ca18b8773fe785955bc2d240232fe8f2c00bbeef316bf9f99
+file_count: 36
+scope: workspace/archive/overchat/r1/migrated_provider (== providers/finished/overchat, __pycache__ excluded)
+algorithm: sha256 over sorted 'relpath:sha256\n' lines
