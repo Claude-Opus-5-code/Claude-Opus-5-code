@@ -7,6 +7,20 @@ dependencies = [
   "pydantic>=2.0",
 ]
 
+# Test-only dependencies.
+#
+# pyyaml: required by tests/contract/test_overchat_provider_contract.py to parse
+# providers/finished/overchat/manifest.yaml and assert the manifest's declared
+# capabilities/models/limits match the code. Reason (README §31): manifest-vs-code
+# agreement cannot be verified without reading the manifest, and hand-rolling a
+# YAML parser would be less reliable than the standard library ecosystem choice.
+# Scope: tests only — NO provider runtime module imports yaml.
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+  "pyyaml>=6.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
