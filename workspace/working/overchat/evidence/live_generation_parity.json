@@ -1,0 +1,62 @@
+{
+  "captured_utc": "2026-08-27",
+  "purpose": "README §36 live verification + §23 live differential parity. Supersedes the earlier PARTIAL status, where the generation path was blocked by a transient upstream 502.",
+  "secret_hygiene": "No credential exists for this provider (guest identity minted from device headers). No id/email/deviceId/IP value is recorded here (README §38).",
+  "probes": [
+    {
+      "probe": "A_bare_auth_me_no_device_headers",
+      "request": "GET https://api.overchat.ai/v1/auth/me (accept: application/json only)",
+      "observed_status": 401,
+      "observed_body": "{\"message\":\"Unauthorized\",\"statusCode\":401}",
+      "interpretation": "Guest admission is NOT unconditional: the device-header set is what provisions the guest identity. This is why the source's header block is load-bearing and was preserved."
+    },
+    {
+      "probe": "B_auth_me_with_migrated_header_builder",
+      "request": "GET https://api.overchat.ai/v1/auth/me with headers from overchat.runtime.headers.build_mobile_headers()",
+      "observed_status": 200,
+      "observed_fields": {
+        "isGuest": true,
+        "id_present": true
+      },
+      "interpretation": "The MIGRATED header builder reproduces guest provisioning against the real upstream. Evidence for auth/session parity produced by the migrated code, not by a mock."
+    },
+    {
+      "probe": "C_live_generation_via_migrated_adapter",
+      "path": "OverchatProvider(transport=requests).generate(GenerateRequest(prompt='Reply with the single word: OK'))",
+      "result": "SUCCESS",
+      "model_used": "google/gemini-3.5-flash",
+      "reply_text": "OK",
+      "stream_errors": [],
+      "interpretation": "Full 4-step flow (auth -> title -> chat create -> SSE responses) executed live end-to-end through the V3 adapter, with SSE deltas parsed into the final reply."
+    },
+    {
+      "probe": "E_ip_spoof_header_ablation",
+      "request": "GET https://api.overchat.ai/v1/auth/me twice: full migrated header set, then the same set minus X-Forwarded-For / X-Real-IP / Client-IP",
+      "with_spoof_headers": {"status": 200, "isGuest": true},
+      "without_spoof_headers": {"status": 200, "isGuest": true},
+      "admission_differs": false,
+      "interpretation": "Controlled A/B ablation: the three QUARANTINED IP-spoof headers do NOT affect guest admission, while the wider device-header set does (compare probe A, which returns 401). They are nevertheless preserved and default-ON because README §17/§18 forbid dropping source behavior on the basis of it looking unnecessary; removal would be a deliberate divergence requiring an operator decision (§43).",
+      "distinction": "This isolates the spoof headers specifically. Probe A vs B proves the device headers are load-bearing; this probe proves the IP-spoof subset is not."
+    },
+    {
+      "probe": "D_live_generation_via_ORIGINAL_source",
+      "path": "send_chat_request('Reply with the single word: OK', Config(), 'live-parity') on the immutable inbox script",
+      "result": "SUCCESS",
+      "reply_text": "OK",
+      "harness_note": "BASE_DIR redirected to a temp dir so the original's reply-file write could not pollute workspace/inbox/ (README §9). Source SHA-256 re-verified unchanged after the run: d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470",
+      "interpretation": "The ORIGINAL was executed live against the same upstream in the same session."
+    }
+  ],
+  "live_differential_result": {
+    "original_reply": "OK",
+    "migrated_reply": "OK",
+    "equivalent": true,
+    "equivalence_level": "semantic (README §23) — upstream text generation is nondeterministic in general; this prompt was chosen to be effectively deterministic so the two paths can be compared directly.",
+    "note": "Both paths completed the same 4-step request sequence and terminated on the [DONE] sentinel."
+  },
+  "remaining_live_limitation": {
+    "area": "non-delta / non-error SSE event types",
+    "status": "UNKNOWN — unchanged by this capture",
+    "reason": "The source establishes handling for exactly two event types (response.output_text.delta, error). Live traffic for this prompt emitted only those. No offline or live evidence available in this environment can enumerate the upstream's full event vocabulary, so inventing handling for other types would violate README §16."
+  }
+}
