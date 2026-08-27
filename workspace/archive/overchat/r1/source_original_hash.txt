@@ -1,0 +1,39 @@
+source_file: 01.02_overchat_gpt5_2_gemini3_5_bypass.py
+relative_path: gemini--flash/01.02_overchat_gpt5_2_gemini3_5_bypass.py
+size_bytes: 20308
+lines: 403
+
+# STRONGEST INDEPENDENTLY REPRODUCIBLE IDENTITY (README section 47)
+# Per-file SHA-256 over the raw bytes. Recomputed live this cycle and matched
+# the value recorded at hash-lock time exactly, byte-for-byte.
+sha256: d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470
+per_file_hash_verified_unchanged_this_cycle: true
+source_changed: false
+
+# TREE-HASH DISCREPANCY (retained, NOT forced to match -- README section 47)
+recorded_tree_sha256:   5cb5f4f423f44a6ed28341002ff867aa315cb9cc24d3f06bcf5cf0645936daa9
+recomputed_tree_sha256: cb010e479417a7c86e905d5dc35c7743e1e7e17e9c4c3f979cea7332c4c4345a
+tree_hash_reproducible: false
+tree_hash_algorithm_recorded: UNKNOWN
+discrepancy_note: |
+  The aggregate tree hash recorded in WORK_STATE.json / source_original_hash.json
+  could not be reproduced this cycle. The exact aggregation algorithm used at
+  hash-lock time was never written down, so the digest is not independently
+  recomputable. Ten candidate constructions were tried (raw file digest;
+  sha256 of the hex digest; name:hash, name hash, relpath:hash, sha256sum
+  output format, size-included, JSON-serialized in two forms, double-sha) and
+  none reproduced the recorded value.
+
+  Per README section 47 the discrepancy is RETAINED rather than resolved by
+  editing artifacts: no file was altered to force a match, and the recorded
+  value is not restated as if it had been verified.
+
+  This does NOT indicate source drift. The authoritative per-file SHA-256 over
+  the source bytes matches the locked value exactly, and the file size (20308)
+  and line count (403) also match, so source identity is proven by the
+  strongest reproducible means available. Only the undocumented aggregate is
+  unreproducible.
+
+  The recomputed value above is emitted by a documented algorithm:
+  sha256 over sorted "<relpath>:<sha256>\n" lines, __pycache__ excluded.
+  Future revisions should use that definition.
