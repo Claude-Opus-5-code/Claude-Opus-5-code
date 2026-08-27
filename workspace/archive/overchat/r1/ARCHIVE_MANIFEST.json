@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "provider_key": "overchat",
+  "revision": "r1",
+  "archived_utc": "2026-08-27T19:06:59+00:00",
+  "immutable": true,
+  "note": "README section 45: if finished and archive differ, the ARCHIVE is the evidence authority.",
+  "source_identity": {
+    "inbox_path": "workspace/inbox/gemini--flash/",
+    "file_count": 1,
+    "file": "01.02_overchat_gpt5_2_gemini3_5_bypass.py",
+    "size_bytes": 20308,
+    "lines": 403,
+    "sha256": "d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470",
+    "per_file_hash_reverified_this_cycle": true,
+    "source_changed": false,
+    "tree_hash_recorded": "5cb5f4f423f44a6ed28341002ff867aa315cb9cc24d3f06bcf5cf0645936daa9",
+    "tree_hash_recomputed": "cb010e479417a7c86e905d5dc35c7743e1e7e17e9c4c3f979cea7332c4c4345a",
+    "tree_hash_reproducible": false,
+    "tree_hash_discrepancy": "RETAINED per README section 47; see source_original_hash.txt. Per-file SHA-256 matches exactly, so source identity is proven; only the undocumented aggregation algorithm is unreproducible. No artifact was edited to force a match.",
+    "sanitized_snapshot": "NOT_APPLICABLE (no credential values in source)"
+  },
+  "target_identity": {
+    "finished_path": "providers/finished/overchat/",
+    "archived_copy": "migrated_provider/",
+    "file_count": 36,
+    "target_tree_sha256": "5a816955f9c12f0ca18b8773fe785955bc2d240232fe8f2c00bbeef316bf9f99",
+    "tree_hash_algorithm": "sha256 over sorted '<relpath>:<sha256>\\n' lines, __pycache__ excluded",
+    "archive_matches_finished": true,
+    "archive_match_method": "per-file SHA-256 comparison of all 36 files: 0 additions, 0 removals, 0 content differences"
+  },
+  "classification_totals": {
+    "SUPPORTED": 24,
+    "SANITIZED": 3,
+    "QUARANTINED": 3,
+    "UNSUPPORTED": 5,
+    "UNKNOWN": 1,
+    "UNVERIFIED": 0
+  },
+  "declared_capabilities": [
+    "text_generation",
+    "streaming"
+  ],
+  "activation": {
+    "status": "disabled",
+    "activation": "integration_pending"
+  },
+  "gates": {
+    "repo_level_pytest": "PASS (64 passed)",
+    "full_suite_incl_provider": "PASS (291 passed)",
+    "provider_package_tests": "PASS (227 passed)",
+    "standalone_certification": "PASS (225 passed, 2 skipped from /tmp with workspace/working/overchat moved out of the repo; skips self-declare 'Core not on sys.path')",
+    "repository_verification": "PASS (RESULT: PASS, 8/8)",
+    "secret_scan": "PASS (secret scan clean)",
+    "cache_hygiene": "PASS (0 cache files tracked in git after untracking .pytest_cache)",
+    "offline_differential_parity": "PASS (original vs migrated via shared recording transport)",
+    "live_verification": "PASS (guest auth 200; generation returned 'OK' on BOTH original and migrated; IP-spoof ablation 200/200)",
+    "mypy": "NOT_CONFIGURED",
+    "ruff": "NOT_CONFIGURED",
+    "import_linter": "NOT_CONFIGURED"
+  },
+  "final_status": "VERIFIED_WITH_LIMITATIONS",
+  "known_limitations": [
+    "Non-delta/non-error SSE event types remain UNKNOWN: the source establishes exactly two event types and live traffic emitted only those; no available evidence enumerates the upstream vocabulary (provider-intrinsic).",
+    "mypy/ruff/import-linter NOT_CONFIGURED in this repository; not installed to avoid misreporting tool defaults as repo policy (README section 40).",
+    "Live coverage exercised the happy path and a 401; in-stream error events and unknown-model passthrough are covered offline only, as provoking them live would mean deliberately malforming production traffic."
+  ],
+  "open_operator_decisions": [
+    "Quarantined IP-spoof headers (X-Forwarded-For / X-Real-IP / Client-IP): controlled ablation shows guest admission is identical with and without them (200/200), while the wider device-header set IS required (401 without). Preserved and default-ON per README sections 17/18; disabling is a one-line operator choice via include_ip_spoof_headers. Not flipped unilaterally."
+  ],
+  "archive_contents": {
+    "CAPABILITY_INVENTORY.md": {
+      "size_bytes": 15037,
+      "sha256": "a5b2fd220ee0618ac49c9304abb3cf97f2a73835e5520efb1ccf62cb66ae204b"
+    },
+    "MIGRATION_MAP.md": {
+      "size_bytes": 8031,
+      "sha256": "152a9c886c482850085026d21eb0e9933bdf56b80c226562f64b1f4c8fcee23b"
+    },
+    "MIGRATION_PLAN.md": {
+      "size_bytes": 7067,
+      "sha256": "1328b0e1e0cb131edeef100d9996888baa45ba16cc656bbdb6cc2c00309fa211"
+    },
+    "MIGRATION_REPORT.md": {
+      "size_bytes": 13902,
+      "sha256": "85f9f42b415abc64ee63b8fd5534c635e23c9fe793e98ff6e24cb0f6273c4652"
+    },
+    "VERIFICATION_RESULTS.md": {
+      "size_bytes": 19111,
+      "sha256": "df6fac99726a336c181dc0d1de214c94936d4a768e71fd49701cbbfae71d02b3"
+    },
+    "manifest.yaml": {
+      "size_bytes": 8759,
+      "sha256": "a778d16b5a9232e743e217a3e8416d3c3bc03aafe54a2d79ecb437b7fe38b813"
+    },
+    "migrated_provider/README.md": {
+      "size_bytes": 6973,
+      "sha256": "53639728945f2d2a8eda531e182b1001c4e2bc128e46f7a552d0564a04a3da7d"
+    },
+    "migrated_provider/__init__.py": {
+      "size_bytes": 1656,
+      "sha256": "3fdaa711506db111ece095b8cfa91743e4551c8ffd3475fc153ae34371ba2388"
+    },
+    "migrated_provider/config.py": {
+      "size_bytes": 2776,
+      "sha256": "dae40439e2f6d00cae6d3f4b86d23e9b47dfc720e33f23727fe119d05a30ee31"
+    },
+    "migrated_provider/discovery/__init__.py": {
+      "size_bytes": 183,
+      "sha256": "4958dd31e9b82784cd5a0e1b12c396dcdfcc53fd03a6073f804fc4dbb5d695a8"
+    },
+    "migrated_provider/discovery/models.py": {
+      "size_bytes": 2693,
+      "sha256": "49584ae9801075d04625905181fd788948887e19137de51f7dab1685c8f4e88a"
+    },
+    "migrated_provider/health.py": {
+      "size_bytes": 2837,
+      "sha256": "135a801bab7b868723c3b5301b37f1a93f48be33a9446dca091dec9af6f70d2c"
+    },
+    "migrated_provider/legacy/__init__.py": {
+      "size_bytes": 514,
+      "sha256": "7a2ed14fa6ddd8001c4d476d89b78e5384815600fccf6b745a844e3e05ba2058"
+    },
+    "migrated_provider/legacy/banner.py": {
+      "size_bytes": 5124,
+      "sha256": "3f6a275d3ae9a2292d0db8e637c2246b410faf7aba8d44e080745c4ed7e595c8"
+    },
+    "migrated_provider/legacy/cli_app.py": {
+      "size_bytes": 9181,
+      "sha256": "db5bf31b4fadbd2b86036e78761beec6a22224e8c50e52e9f728390eddf5895d"
+    },
+    "migrated_provider/legacy/colors.py": {
+      "size_bytes": 1059,
+      "sha256": "da8ad283f798de2674446eb1adc944b2fa80d9980f621d754cfee45bbd35c3ed"
+    },
+    "migrated_provider/legacy/console.py": {
+      "size_bytes": 1191,
+      "sha256": "37eda8144b7d9c500f2dcb2013cf2b86bfee341b2107ad75b20d8cb878e34f43"
+    },
+    "migrated_provider/legacy/file_io.py": {
+      "size_bytes": 3864,
+      "sha256": "8a4785a1ad706b9690d399d9f20d7a20ad62d141700c1bd972b4cfb1a47ca270"
+    },
+    "migrated_provider/legacy/stats.py": {
+      "size_bytes": 1487,
+      "sha256": "38dd8b0ea38d3a7636818a7c7d5bae4348662de72a3b5bf2d9ffca912c1d8023"
+    },
+    "migrated_provider/manifest.yaml": {
+      "size_bytes": 8759,
+      "sha256": "a778d16b5a9232e743e217a3e8416d3c3bc03aafe54a2d79ecb437b7fe38b813"
+    },
+    "migrated_provider/operations/__init__.py": {
+      "size_bytes": 234,
+      "sha256": "7c268a7a39e9e40d721a5c7fdd5aa4e4f01eb2d2337cc62868051030319022fa"
+    },
+    "migrated_provider/operations/text_generation.py": {
+      "size_bytes": 8472,
+      "sha256": "501c5b1267410bd92692c840f3e32357caa391d82db5838f30b32b5ce1aa6811"
+    },
+    "migrated_provider/provider.py": {
+      "size_bytes": 9148,
+      "sha256": "9643b4faf314f1be7372ca192990f36df70bc50044d299c1f7c1a817fafd0546"
+    },
+    "migrated_provider/runtime/__init__.py": {
+      "size_bytes": 301,
+      "sha256": "34d26b164cb91f652da2ee47e00d0399b58464a5d3580b7c002a8ad1133ffd75"
+    },
+    "migrated_provider/runtime/errors.py": {
+      "size_bytes": 5897,
+      "sha256": "0252869b2c6d3635c27fcf6a59413da1b3c53d39519d685e29a57f4b25fbf169"
+    },
+    "migrated_provider/runtime/headers.py": {
+      "size_bytes": 3424,
+      "sha256": "425ed941f9f0f240dd4629d2c8ca569a221c012d07e0f7151c5f8d881a6fbb30"
+    },
+    "migrated_provider/runtime/parser.py": {
+      "size_bytes": 3678,
+      "sha256": "1934c87cdcc1ed6072c578642b886e9aa23fe87ddec184fd2d83b7ed1564003b"
+    },
+    "migrated_provider/runtime/request.py": {
+      "size_bytes": 5423,
+      "sha256": "9d23e026753c183c211b7936102555bc8b3bdbbfc027fb16f7ec275ceb085ce4"
+    },
+    "migrated_provider/runtime/session.py": {
+      "size_bytes": 4725,
+      "sha256": "f11e17a6405b96e67d5a62c508362f4cc6feb7a65074c8bcf20b62a185e2bb91"
+    },
+    "migrated_provider/tests/__init__.py": {
+      "size_bytes": 222,
+      "sha256": "5ad8a55d3a4eac0a3c4b198b944abf86eb9ccbfa5dafe4133561c59216ff9997"
+    },
+    "migrated_provider/tests/conftest.py": {
+      "size_bytes": 7268,
+      "sha256": "a8ab01bbfcfeabd7367523c617173241b283d7ba587d15817cbda9ccacb7249a"
+    },
+    "migrated_provider/tests/test_config.py": {
+      "size_bytes": 3236,
+      "sha256": "c45b6e259207daa42d8793ce47fb149d91a53e4172451b757b59b0ff0738bf7d"
+    },
+    "migrated_provider/tests/test_errors.py": {
+      "size_bytes": 6810,
+      "sha256": "e3c368b30908ac23a6740b600910ad2834529dffcf792117f14a863cafe14f41"
+    },
+    "migrated_provider/tests/test_headers.py": {
+      "size_bytes": 4467,
+      "sha256": "a6166f73138f6cdfb4503711038552102c747ee026f51f094d892f381c558a4e"
+    },
+    "migrated_provider/tests/test_health.py": {
+      "size_bytes": 4319,
+      "sha256": "8920a3f4d090b4e88d5a6ddd5a7ffbea522b283158920bb86b34aa9133620422"
+    },
+    "migrated_provider/tests/test_legacy.py": {
+      "size_bytes": 8094,
+      "sha256": "f2c2682d7adde5436df70f6f352a043dff272b05ec4e4d53722baa09df16b351"
+    },
+    "migrated_provider/tests/test_models.py": {
+      "size_bytes": 3584,
+      "sha256": "22989f3f7e0f6e98b79b53e164a709cfd3a12d241d7813bc7c6addfab8b078cd"
+    },
+    "migrated_provider/tests/test_operations.py": {
+      "size_bytes": 16869,
+      "sha256": "f43139c077104781f8cf42d072d8eb1e44fc5fb3c9d898d4d8a1facb682c2d7e"
+    },
+    "migrated_provider/tests/test_parser.py": {
+      "size_bytes": 7816,
+      "sha256": "104cd89d809859c8439ba50117f78495d5183ab1176b4d410a56c9e44aaab965"
+    },
+    "migrated_provider/tests/test_provider.py": {
+      "size_bytes": 11708,
+      "sha256": "57911c9b3798522bae4b817746fd9a7e4e40a1ce5ac13730ae9ee72f857772c3"
+    },
+    "migrated_provider/tests/test_request.py": {
+      "size_bytes": 9656,
+      "sha256": "b0ec7cc31c39d2d4579f77414b58e9ed851ac90567104d16e3edad067e85d69d"
+    },
+    "migrated_provider/tests/test_session.py": {
+      "size_bytes": 6625,
+      "sha256": "91b5cea6ef9b4c470f77d30f5a20ffc6c300bf424152e241ee5c209cf8f38f94"
+    },
+    "source_evidence_snapshot/01.02_overchat_gpt5_2_gemini3_5_bypass.py": {
+      "size_bytes": 20308,
+      "sha256": "d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470"
+    },
+    "source_original_hash.txt": {
+      "size_bytes": 2071,
+      "sha256": "470e8adaefe1c5a3ee086f84a7df0bab0c81bf241c2c105390efacb9658c1e93"
+    },
+    "source_sanitized_hash.txt": {
+      "size_bytes": 333,
+      "sha256": "a96619400ee0a8887fcb7b3daea3576c6f6caa5e9bc818f896f19f9246f2ea4d"
+    },
+    "target_hash.txt": {
+      "size_bytes": 265,
+      "sha256": "630e676f1d1c281e070f2c6636da7660ca4e61bb0fe7d966299ddd62a7bcb373"
+    }
+  },
+  "archive_file_count": 46,
+  "archive_contents_note": "Hashes cover every archived file except ARCHIVE_MANIFEST.json itself (a manifest cannot contain its own digest). Recomputed after the final report/verification sync so the manifest matches the archived bytes exactly."
+}
