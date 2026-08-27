@@ -1,0 +1,5 @@
+status: NOT_APPLICABLE
+reason: the source contains no credential values (guest/no-auth provider), so no
+  sanitized derivative was created. README section 9 makes the sanitized snapshot
+  conditional on sensitive values requiring sanitization.
+original_source_sha256: d513c0359c8aada2801a3d847466cf2d0e865e33fd05f0d180c902187cbbc470
