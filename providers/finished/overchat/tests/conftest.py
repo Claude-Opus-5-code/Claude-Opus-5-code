@@ -59,7 +59,11 @@ class FakeResponse:
         self.status_code = status_code
         self._payload = payload
         self.text = text
-        self._lines = list(lines)
+        # NOT materialized with list(): doing so would drain a generator source
+        # eagerly and make even a genuinely lazy provider look buffered, hiding
+        # streaming regressions. `iter()` in iter_lines() handles both lists and
+        # generators, and nothing replays a response.
+        self._lines = lines
         self._raise_on_json = raise_on_json
         self._raise_on_iter = raise_on_iter
 
@@ -101,10 +105,21 @@ class RecordingTransport:
         return [(c.method, c.url) for c in self.calls]
 
     def call_to(self, needle: str) -> RecordedCall:
-        for call in self.calls:
-            if needle in call.url:
-                return call
-        raise AssertionError(f"no recorded call matching {needle!r}; got {self.urls}")
+        """Return the single recorded call whose URL contains `needle`.
+
+        Fails loudly on AMBIGUITY as well as on absence: `/v1/chat/<uid>` is a
+        prefix of the title URL, so a silent "first match" would let a test
+        assert against the wrong request and still pass.
+        """
+        matches = [c for c in self.calls if needle in c.url]
+        if not matches:
+            raise AssertionError(f"no recorded call matching {needle!r}; got {self.urls}")
+        if len(matches) > 1:
+            raise AssertionError(
+                f"ambiguous needle {needle!r} matched {len(matches)} calls: "
+                f"{[c.url for c in matches]}; select by index instead"
+            )
+        return matches[0]
 
     # -- transport surface --------------------------------------------------
 
