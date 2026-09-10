@@ -70,8 +70,10 @@ DEFAULT_ACCOUNTS_FILE = os.path.join(BASE_DIR, "accounts_syntx.json")
 
 LOOP_MODE: bool = True               # وضع التكرار الدائم كوضع افتراضي
 MAX_ACCOUNTS: int = 10               # الحد الأقصى الافتراضي للحسابات المطلوب توليدها
-DELAY_BETWEEN: int = 5               # المهلة بالثواني بين كل عملية تسجيل
-OTP_TIMEOUT: int = 75                # أقصى مهلة لانتظار كود التحقق بالثواني
+DELAY_MIN: int = 5                   # أقل ثواني انتظار بين الحسابات
+DELAY_MAX: int = 10                  # أكتر ثواني انتظار بين الحسابات
+OTP_TIMEOUT: int = 15                # أقصى مهلة لانتظار كود التحقق بالثواني (Fast-Drop)
+ACCOUNT_TIMEOUT: int = 180           # ثواني ماكس لإنشاء حساب واحد
 DEFAULT_PROVIDER: str = "tempmailclub"  # المزود الافتراضي (Temp-Mail.club)
 
 EMAIL_PROVIDERS: List[str] = ["tempmailclub"]
@@ -90,8 +92,10 @@ class Config:
     accounts_file: str = DEFAULT_ACCOUNTS_FILE
     loop_mode: bool = LOOP_MODE
     max_accounts: int = MAX_ACCOUNTS
-    delay_between: int = DELAY_BETWEEN
+    delay_min: int = DELAY_MIN
+    delay_max: int = DELAY_MAX
     otp_timeout: int = OTP_TIMEOUT
+    account_timeout: int = ACCOUNT_TIMEOUT
     email_provider: str = DEFAULT_PROVIDER
     target_pool_size: int = 10
     
@@ -106,12 +110,16 @@ class Config:
 # ======================================================================
 
 class TempMailClubProvider:
-    """عميل Temp-Mail.club لاستخراج إيميلات rc.mailings.live / msp.mailings.live"""
+    """عميل Temp-Mail.club لاستخراج إيميلات rc.mailings.live / msp.mailings.live مع تدوير IP ذكي"""
     def __init__(self):
         self.session = cffi.Session(impersonate="chrome124")
+        self.fake_ip = f"{random.randint(11, 190)}.{random.randint(1, 254)}.{random.randint(1, 254)}.{random.randint(1, 254)}"
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+            'X-Forwarded-For': self.fake_ip,
+            'X-Real-IP': self.fake_ip,
+            'Client-IP': self.fake_ip,
         }
         self.csrf_token = ""
         self.app_fingerprint = None
@@ -146,7 +154,10 @@ class TempMailClubProvider:
                 'X-Livewire': 'true',
                 'Origin': 'https://temp-mail.club',
                 'Referer': 'https://temp-mail.club/',
-                'Accept': 'text/html, application/xhtml+xml'
+                'Accept': 'text/html, application/xhtml+xml',
+                'X-Forwarded-For': self.fake_ip,
+                'X-Real-IP': self.fake_ip,
+                'Client-IP': self.fake_ip,
             }
             payload = {
                 'fingerprint': action_comp['fingerprint'],
@@ -181,7 +192,10 @@ class TempMailClubProvider:
             'X-Livewire': 'true',
             'Origin': 'https://temp-mail.club',
             'Referer': 'https://temp-mail.club/mailbox',
-            'Accept': 'text/html, application/xhtml+xml'
+            'Accept': 'text/html, application/xhtml+xml',
+            'X-Forwarded-For': self.fake_ip,
+            'X-Real-IP': self.fake_ip,
+            'Client-IP': self.fake_ip,
         }
         start = time.time()
         while time.time() - start < timeout:
@@ -297,63 +311,79 @@ def create_syntx_chat(token: str, cfg: Config) -> Optional[str]:
 
 def register_single_syntx_account(cfg: Config) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
-    تنفيذ عملية تسجيل حساب واحد بالكامل عبر مزود TempMailClub:
-    1. توليد إيميل مؤقت (*.mailings.live)
+    تنفيذ عملية تسجيل حساب واحد بالكامل عبر مزود البريد المؤقت:
+    1. توليد إيميل مؤقت (*.mailings.live / *.klvibe.org)
     2. طلب إرسال كود الـ OTP
     3. استلام الكود والتوثيق واستخراج الـ Token
+    مع الالتزام بمهلة الحساب الكلية ACCOUNT_TIMEOUT ومهلة OTP_TIMEOUT السريعة (Fast-Drop)
     """
-    headers_syntx = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
+    start_account_time = time.time()
+    attempt = 0
 
-    tmc = TempMailClubProvider()
-    print(f"{YELLOW}[*] جاري توليد إيميل جديد عبر مزود: {CYAN}{tmc.PROVIDER_NAME}{RESET}...")
-    email = tmc.create_email()
+    while (time.time() - start_account_time) < cfg.account_timeout:
+        attempt += 1
+        elapsed = int(time.time() - start_account_time)
+        remaining = int(cfg.account_timeout - elapsed)
 
-    if not email:
-        print(f"{RED}[✗] تعذر توليد إيميل صالح من مزود TempMailClub.{RESET}")
-        return None, None, None
+        if attempt > 1:
+            print(f"\n{YELLOW}🔄 [محاولة تدوير #{attempt}] مستهلك {elapsed}s | متبقي {remaining}s — جاري تجربة إيميل جديد...{RESET}")
 
-    print(f"{GREEN}[✓] تم توليد الإيميل بنجاح ({tmc.PROVIDER_NAME}): {WHITE}{BRIGHT}{email}{RESET}")
+        headers_syntx = {
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
 
-    # 1. إرسال طلب كود التحقق
-    print(f"{YELLOW}[*] إرسال طلب كود التحقق (OTP) إلى سيرفرات Syntx...{RESET}")
-    payload_send = {"email": email, "ref_uuid": None, "utm": ""}
-    try:
-        r_send = cffi.post(f"{cfg.base_api_url}/auth/email/send-otp", json=payload_send, headers=headers_syntx, timeout=15)
-        if r_send.status_code != 200:
-            print(f"{RED}[✗] فشل إرسال كود التحقق ({r_send.status_code}): {r_send.text}{RESET}")
-            return None, None, None
-    except Exception as e:
-        print(f"{RED}[✗] خطأ في الاتصال أثناء إرسال OTP: {e}{RESET}")
-        return None, None, None
+        tmc = TempMailClubProvider()
+        print(f"{YELLOW}[*] جاري توليد إيميل جديد عبر مزود: {CYAN}{tmc.PROVIDER_NAME}{RESET}...")
+        email = tmc.create_email()
 
-    # 2. انتظار استلام كود التحقق
-    print(f"{MAGENTA}[⏳] بانتظار استلام كود التحقق من صندوق الوارد (مهلة {cfg.otp_timeout} ثانية)...{RESET}")
-    otp_code = tmc.poll_otp(timeout=cfg.otp_timeout)
-        
-    if not otp_code:
-        print(f"{RED}[✗] انتهت المهلة ولم يتم استلام كود التحقق.{RESET}")
-        return None, None, None
+        if not email:
+            print(f"{RED}[✗] تعذر توليد إيميل صالح من مزود TempMailClub.{RESET}")
+            time.sleep(1)
+            continue
 
-    print(f"{GREEN}[✓] تم استلام كود التحقق بنجاح: {WHITE}{BRIGHT}{otp_code}{RESET} ⚡")
+        print(f"{GREEN}[✓] تم توليد الإيميل بنجاح ({tmc.PROVIDER_NAME}): {WHITE}{BRIGHT}{email}{RESET}")
 
-    # 3. توثيق الكود واستخراج الـ Token
-    print(f"{YELLOW}[*] جاري توثيق الكود لدى Syntx واستخراج رمز الدخول (Bearer Token)...{RESET}")
-    payload_verify = {"email": email, "otp_code": otp_code, "ref_uuid": None, "utm": ""}
-    try:
-        r_ver = cffi.post(f"{cfg.base_api_url}/auth/email/verify-otp", json=payload_verify, headers=headers_syntx, timeout=15)
-        if r_ver.status_code == 200 and r_ver.json().get("success"):
-            token = r_ver.json().get("token")
-            print(f"{GREEN}[✓] تم توثيق الحساب بنجاح واستخراج الـ Token!{RESET}")
-            return token, email, tmc.PROVIDER_NAME
-        else:
-            print(f"{RED}[✗] فشل توثيق الكود: {r_ver.text}{RESET}")
-    except Exception as e:
-        print(f"{RED}[✗] خطأ أثناء توثيق الـ OTP: {e}{RESET}")
+        # 1. إرسال طلب كود التحقق
+        print(f"{YELLOW}[*] إرسال طلب كود التحقق (OTP) إلى سيرفرات Syntx...{RESET}")
+        payload_send = {"email": email, "ref_uuid": None, "utm": ""}
+        try:
+            r_send = cffi.post(f"{cfg.base_api_url}/auth/email/send-otp", json=payload_send, headers=headers_syntx, timeout=15)
+            if r_send.status_code != 200:
+                print(f"{RED}[✗] فشل إرسال كود التحقق ({r_send.status_code}): {r_send.text}{RESET}")
+                time.sleep(1)
+                continue
+        except Exception as e:
+            print(f"{RED}[✗] خطأ في الاتصال أثناء إرسال OTP: {e}{RESET}")
+            time.sleep(1)
+            continue
 
+        # 2. انتظار استلام كود التحقق بمهلة سريعة (Fast-Drop)
+        print(f"{MAGENTA}[⏳] بانتظار استلام كود التحقق (مهلة سريعة {cfg.otp_timeout} ثانية للنطاق)...{RESET}")
+        otp_code = tmc.poll_otp(timeout=cfg.otp_timeout)
+            
+        if not otp_code:
+            print(f"{YELLOW}⚡ [Fast-Drop] مهلة الـ OTP انتهت ({cfg.otp_timeout}s) دون وصول الكود! النطاق بطيء — يتم إسقاطه والتدوير فوراً.{RESET}")
+            continue
+
+        print(f"{GREEN}[✓] تم استلام كود التحقق بنجاح: {WHITE}{BRIGHT}{otp_code}{RESET} ⚡")
+
+        # 3. توثيق الكود واستخراج الـ Token
+        print(f"{YELLOW}[*] جاري توثيق الكود لدى Syntx واستخراج رمز الدخول (Bearer Token)...{RESET}")
+        payload_verify = {"email": email, "otp_code": otp_code, "ref_uuid": None, "utm": ""}
+        try:
+            r_ver = cffi.post(f"{cfg.base_api_url}/auth/email/verify-otp", json=payload_verify, headers=headers_syntx, timeout=15)
+            if r_ver.status_code == 200 and r_ver.json().get("success"):
+                token = r_ver.json().get("token")
+                print(f"{GREEN}[✓] تم توثيق الحساب بنجاح واستخراج الـ Token!{RESET}")
+                return token, email, tmc.PROVIDER_NAME
+            else:
+                print(f"{RED}[✗] فشل توثيق الكود: {r_ver.text}{RESET}")
+        except Exception as e:
+            print(f"{RED}[✗] خطأ أثناء توثيق الـ OTP: {e}{RESET}")
+
+    print(f"{RED}[✗] تم تجاوز المهلة القصوى لإنشاء الحساب الواحد ({cfg.account_timeout} ثانية) دون نجاح.{RESET}")
     return None, None, None
 
 
@@ -371,8 +401,8 @@ def print_start_banner(cfg: Config):
     print(f"║          Pure Requests Engine • Multi-Email Rotation • Atomic Database           ║")
     print(f"╚══════════════════════════════════════════════════════════════════════════════════╝{RESET}")
     print(f"{WHITE}• وضع التشغيل: {YELLOW}{'تكرار دائم (Loop Mode)' if cfg.loop_mode else 'عدد محدد (Target Count)'}{RESET}")
-    print(f"{WHITE}• الحسابات المطلوبة: {YELLOW}{cfg.max_accounts} حساب{RESET} | المهلة بين العمليات: {YELLOW}{cfg.delay_between} ثواني{RESET}")
-    print(f"{WHITE}• مزود الإيميلات: {CYAN}{cfg.email_provider.upper()}{RESET} | مهلة الـ OTP: {YELLOW}{cfg.otp_timeout} ثانية{RESET}")
+    print(f"{WHITE}• الحسابات المطلوبة: {YELLOW}{cfg.max_accounts} حساب{RESET} | المهلة بين العمليات: {YELLOW}{cfg.delay_min}-{cfg.delay_max} ثواني (عشوائي){RESET}")
+    print(f"{WHITE}• مزود الإيميلات: {CYAN}{cfg.email_provider.upper()}{RESET} | مهلة الـ OTP: {YELLOW}{cfg.otp_timeout}s (Fast-Drop){RESET} | مهلة الحساب: {YELLOW}{cfg.account_timeout}s{RESET}")
     print(f"{WHITE}• خزان الحسابات الحالي: {GREEN}{BRIGHT}{active_now} حساب نشط{RESET} في {YELLOW}{os.path.basename(cfg.accounts_file)}{RESET}")
     print(f"{CYAN}{'═' * 82}{RESET}\n")
 
@@ -437,8 +467,10 @@ def run_factory_loop(cfg: Config):
                 print(f"\n{GREEN}🎉 اكتمل تسجيل الهدف المطلوب بالكامل!{RESET}")
                 break
 
-            print(f"{YELLOW}⏳ انتظار {cfg.delay_between} ثواني قبل العملية التالية...{RESET}\n")
-            time.sleep(cfg.delay_between)
+            # حساب المهلة العشوائية بين DELAY_MIN و DELAY_MAX
+            delay = random.randint(min(cfg.delay_min, cfg.delay_max), max(cfg.delay_min, cfg.delay_max))
+            print(f"{YELLOW}⏳ انتظار {delay} ثواني قبل العملية التالية (عشوائي بين {cfg.delay_min} و {cfg.delay_max} ث)...{RESET}\n")
+            time.sleep(delay)
 
     except (KeyboardInterrupt, SystemExit):
         print(f"\n{RED}⛔ تم إيقاف المصنع يدوياً بواسطة المستخدم (Ctrl+C).{RESET}")
@@ -456,20 +488,28 @@ def main():
     parser.add_argument("--max", "-m", type=int, default=MAX_ACCOUNTS, help=f"الحد الأقصى لعدد الحسابات (الافتراضي: {MAX_ACCOUNTS})")
     parser.add_argument("--loop", action="store_true", default=True, help="تشغيل في وضع التكرار الدائم (الافتراضي)")
     parser.add_argument("--no-loop", action="store_false", dest="loop", help="إيقاف التكرار عند الوصول للعدد المحدد بـ --max")
-    parser.add_argument("--delay", "-d", type=int, default=DELAY_BETWEEN, help=f"المهلة بالثواني بين الحسابات (الافتراضي: {DELAY_BETWEEN})")
+    parser.add_argument("--delay-min", type=int, default=DELAY_MIN, help=f"أقل ثواني انتظار بين الحسابات (الافتراضي: {DELAY_MIN})")
+    parser.add_argument("--delay-max", type=int, default=DELAY_MAX, help=f"أكثر ثواني انتظار بين الحسابات (الافتراضي: {DELAY_MAX})")
+    parser.add_argument("--delay", "-d", type=int, default=None, help="مهلة انتظار ثابتة (تتجاوز delay-min و delay-max)")
     parser.add_argument("--timeout", "-t", type=int, default=OTP_TIMEOUT, help=f"أقصى مهلة لانتظار كود OTP (الافتراضي: {OTP_TIMEOUT})")
+    parser.add_argument("--account-timeout", type=int, default=ACCOUNT_TIMEOUT, help=f"أقصى مهلة لإنشاء حساب واحد بالكامل (الافتراضي: {ACCOUNT_TIMEOUT})")
     parser.add_argument("--provider", "-p", choices=EMAIL_PROVIDERS, default=DEFAULT_PROVIDER, help="مزود الإيميل (tempmailclub)")
     parser.add_argument("--count", "-c", action="store_true", help="عرض عدد الحسابات النشطة بالخزان فقط")
     parser.add_argument("--list", "-l", action="store_true", help="عرض قائمة بجميع الحسابات المسجلة وحالتها")
     parser.add_argument("--file", "-f", type=str, default=DEFAULT_ACCOUNTS_FILE, help="مسار ملف الحفظ")
     args = parser.parse_args()
 
+    d_min = args.delay if args.delay is not None else args.delay_min
+    d_max = args.delay if args.delay is not None else args.delay_max
+
     cfg = Config(
         accounts_file=args.file,
         loop_mode=args.loop,
         max_accounts=args.max,
-        delay_between=args.delay,
+        delay_min=d_min,
+        delay_max=d_max,
         otp_timeout=args.timeout,
+        account_timeout=args.account_timeout,
         email_provider=args.provider
     )
 

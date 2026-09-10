@@ -196,13 +196,17 @@ def add_account_to_pool(email: str, token: str, provider: str, chat_uuid: str | 
 # 🛠️ محرك الإيميلات والتسجيل التلقائي (Email Providers Engine)
 # ======================================================================
 class TempMailClubProvider:
-    """عميل temp-mail.club الرسمي المتطابق مع Livewire لدومينات rc.mailings.live"""
+    """عميل temp-mail.club الرسمي المتطابق مع Livewire لدومينات rc.mailings.live مع تدوير IP"""
     def __init__(self):
         self.PROVIDER_NAME = "tempmailclub"
         self.session = cffi.Session(impersonate="chrome124")
+        self.fake_ip = f"{random.randint(11, 190)}.{random.randint(1, 254)}.{random.randint(1, 254)}.{random.randint(1, 254)}"
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+            'X-Forwarded-For': self.fake_ip,
+            'X-Real-IP': self.fake_ip,
+            'Client-IP': self.fake_ip,
         }
         self.csrf_token = ""
         self.email = ""
@@ -232,7 +236,10 @@ class TempMailClubProvider:
                 'X-Livewire': 'true',
                 'Origin': 'https://temp-mail.club',
                 'Referer': 'https://temp-mail.club/',
-                'Accept': 'text/html, application/xhtml+xml'
+                'Accept': 'text/html, application/xhtml+xml',
+                'X-Forwarded-For': self.fake_ip,
+                'X-Real-IP': self.fake_ip,
+                'Client-IP': self.fake_ip,
             }
             
             payload = {
@@ -265,7 +272,10 @@ class TempMailClubProvider:
             'X-Livewire': 'true',
             'Origin': 'https://temp-mail.club',
             'Referer': 'https://temp-mail.club/mailbox',
-            'Accept': 'text/html, application/xhtml+xml'
+            'Accept': 'text/html, application/xhtml+xml',
+            'X-Forwarded-For': self.fake_ip,
+            'X-Real-IP': self.fake_ip,
+            'Client-IP': self.fake_ip,
         }
         start = time.time()
         while time.time() - start < timeout:
@@ -576,7 +586,8 @@ def send_syntx_message(prompt_text: str, cfg: Config, source_label: str = "مب�
                 r_poll = cffi.get(f"{cfg.base_api_url}/chats/{chat_uuid}/messages?page_size=20", headers=headers, timeout=15)
                 if r_poll.status_code == 200:
                     messages = r_poll.json().get("messages", [])
-                    for msg in messages:
+                    # قراءة الرسائل من الأحدث إلى الأقدم لضمان التقاط رد السؤال الحالي
+                    for msg in reversed(messages):
                         if msg.get("author_id") == -1:
                             m_objs = msg.get("message_object", [])
                             for obj in m_objs:
