@@ -100,6 +100,14 @@
 - C6 اجتياز حزمة الاختبارات الشاملة: **976 من 976 اختباراً بنجاح باهر 100% في 3.88 ثوانٍ** + اجتياز فحص سلامة منظومة التوثيق `scripts/verify_docs_integrity.py` 100%.
 - C7 تشميع المراسي التشفيرية النشطة الجديدة في `Root/ANCHORS.md`: `anchor_b23_engine_credit_url_fortified_v1` (4036 سطر | SHA-256: `b95d6eb2434deb33b9fdd9d791ef1fc5a2de1847971efc1a964f73d6d1b23efc`) و `anchor_b23_bridge_credit_url_fortified_v1` (8585 سطر | SHA-256: `c515d7c50516ffa77ebdea449c91084d94f0a5ea9275ac07a1313350dbc776f9`).
 
+## Round 24 — Syntx AI Auto-Eviction of Depleted Accounts & Token Rotation (2026-09-10)
+- C0 تلقي فويس البروفيسور زيزو (الفويس 35/36): وجوب الحذف الفوري للحسابات المنتهية الرصيد من accounts_syntx.json ومنع بقائها كـ expired.
+- C1 تعديل دالة `mark_account_expired(token, cfg)` في `01_syntx_chat.py` لحذف الحساب المستنفد ذرياً من ملف JSON وتوثيقه بالطرفية.
+- C2 تشغيل اختبار ضغط حي باستنزاف رصيد الحساب `a5eueq8@hex7.rozxs.com` ومراقبة كود 429 (`chat.text.rateLimitExceeded`).
+- C3 التحقق العملي التام من حذف الحساب المستنفد تلقائياً من `accounts_syntx.json` (انخفض الخزان إلى 8 حسابات نشطة وصالحة 100%).
+- C4 انتقال المحرك فورياً ودون أي توقف للحساب التالي (`wb9zbjt@asm.mailings.live`) واستلام الإجابة الصحيحة بنجاح.
+- C5 رفع التحديثات إلى مستودع GitHub (`Claude-Opus-5-code`) بالكوميت `b8b31fb`.
+
 ## Remaining
 - [x] Round 15 delivered and merged (cd7a215) — but see R99: the merge itself violated Rule 10 and the merge-audit run is red
 - [x] Round 16 C0: ci_status can no longer miss the merge-audit run (self-test 6/6)
