@@ -164,17 +164,22 @@ def get_active_account(cfg: Config) -> dict | None:
     return None
 
 def mark_account_expired(token: str, cfg: Config):
-    """تحديد الحساب كـ Expired في حالة انتهاء صلاحيته أو الرصيد"""
+    """حذف الحساب نهائياً من الخزان فور نفاد الرصيد أو انتهاء الصلاحية بناءً على توجيه زيزو"""
     accounts = load_accounts_pool(cfg)
-    updated = False
+    removed_email = None
+    clean_accounts = []
     for acc in accounts:
-        if acc.get("token") == token:
-            acc["status"] = "expired"
-            acc["expired_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-            updated = True
-            break
-    if updated:
-        save_accounts_pool(accounts, cfg)
+        if acc.get("token") == token or acc.get("status") == "expired":
+            if acc.get("token") == token:
+                removed_email = acc.get("email")
+        else:
+            clean_accounts.append(acc)
+            
+    save_accounts_pool(clean_accounts, cfg)
+    if removed_email:
+        print(f"{Fore.RED}🗑️ [حذف حساب مستنفد] تم حذف الحساب ({removed_email}) نهائياً من {cfg.accounts_file} لنفاد رصيده.{Style.RESET_ALL}")
+    else:
+        print(f"{Fore.RED}🗑️ [تنظيف الخزان] تم استبعاد الحسابات المنتهية من {cfg.accounts_file}.{Style.RESET_ALL}")
 
 def add_account_to_pool(email: str, token: str, provider: str, chat_uuid: str | None, cfg: Config):
     """إضافة حساب جديد مفعل إلى الخزان"""
@@ -565,6 +570,15 @@ def send_syntx_message(prompt_text: str, cfg: Config, source_label: str = "مب�
         "tools": tools_list
     }
 
+    # فحص معرفات الرسائل السابقة لتفادي التقاط رد قديم قبل وصول الرد الجديد
+    pre_msg_ids = set()
+    try:
+        r_pre = cffi.get(f"{cfg.base_api_url}/chats/{chat_uuid}/messages?page_size=20", headers=headers, timeout=10)
+        if r_pre.status_code == 200:
+            pre_msg_ids = set(m.get("id") for m in r_pre.json().get("messages", []))
+    except Exception:
+        pass
+
     t0 = time.time()
     try:
         r_gen = cffi.post(f"{cfg.base_api_url}/llm/generate?ai_name={ai_name}", json=payload, headers=headers, timeout=cfg.reply_timeout)
@@ -584,7 +598,7 @@ def send_syntx_message(prompt_text: str, cfg: Config, source_label: str = "مب�
             return None
 
         if r_gen.status_code in [429, 401, 403]:
-            print(f"{Fore.YELLOW}⚠️ انتهى رصيد الجلسة الحالية أو استجابة ({r_gen.status_code}). جاري التبديل لحساب نشط آخر من الخزان...{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}⚠️ انتهى رصيد الجلسة الحالية أو استجابة ({r_gen.status_code}). جاري حذف الحساب والانتقال للحساب التالي...{Style.RESET_ALL}")
             mark_account_expired(token, cfg)
             return send_syntx_message(prompt_text, cfg, source_label, image_urls)
 
@@ -596,9 +610,9 @@ def send_syntx_message(prompt_text: str, cfg: Config, source_label: str = "مب�
                 r_poll = cffi.get(f"{cfg.base_api_url}/chats/{chat_uuid}/messages?page_size=20", headers=headers, timeout=15)
                 if r_poll.status_code == 200:
                     messages = r_poll.json().get("messages", [])
-                    # قراءة الرسائل من الأحدث إلى الأقدم لضمان التقاط رد السؤال الحالي
+                    # قراءة الرسائل من الأحدث إلى الأقدم والتأكد من أنها رسالة جديدة وليست قديمة
                     for msg in reversed(messages):
-                        if msg.get("author_id") == -1:
+                        if msg.get("id") not in pre_msg_ids and msg.get("author_id") == -1:
                             m_objs = msg.get("message_object", [])
                             for obj in m_objs:
                                 if obj.get("object_type") == "text" and obj.get("completed"):
