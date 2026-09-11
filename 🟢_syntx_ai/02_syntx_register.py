@@ -124,6 +124,7 @@ class TempMailClubProvider:
         self.csrf_token = ""
         self.app_fingerprint = None
         self.app_server_memo = None
+        self.box_action_comp = None
         self.email = ""
         self.PROVIDER_NAME = "tempmailclub"
 
@@ -172,16 +173,68 @@ class TempMailClubProvider:
             for mb in re.findall(r'wire:initial-data=["\'](.*?)["\']', r_box.text):
                 try:
                     mb_j = json.loads(html.unescape(mb))
-                    if mb_j.get('fingerprint', {}).get('name') == 'frontend.app':
+                    comp_name = mb_j.get('fingerprint', {}).get('name')
+                    if comp_name == 'frontend.app':
                         self.email = mb_j.get('serverMemo', {}).get('data', {}).get('email', '')
                         self.app_fingerprint = mb_j.get('fingerprint')
                         self.app_server_memo = mb_j.get('serverMemo')
-                        return self.email
+                    elif comp_name == 'frontend.actions':
+                        self.box_action_comp = mb_j
                 except Exception:
                     pass
+            if self.email:
+                return self.email
         except Exception:
             pass
         return None
+
+    def delete_email(self) -> bool:
+        """حذف صندوق البريد بالكامل من سيرفر temp-mail.club لتصفير الجلسة ومنع تراكم الحسابات"""
+        import html
+        try:
+            if not self.box_action_comp:
+                r_box = self.session.get('https://temp-mail.club/mailbox', headers=self.headers, timeout=10)
+                for mb in re.findall(r'wire:initial-data=["\'](.*?)["\']', r_box.text):
+                    try:
+                        mb_j = json.loads(html.unescape(mb))
+                        if mb_j.get('fingerprint', {}).get('name') == 'frontend.actions':
+                            self.box_action_comp = mb_j
+                            break
+                    except Exception:
+                        pass
+
+            if self.box_action_comp and self.csrf_token:
+                lw_headers = {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': self.csrf_token,
+                    'X-Livewire': 'true',
+                    'Origin': 'https://temp-mail.club',
+                    'Referer': 'https://temp-mail.club/mailbox',
+                    'Accept': 'text/html, application/xhtml+xml',
+                    'X-Forwarded-For': self.fake_ip,
+                    'X-Real-IP': self.fake_ip,
+                    'Client-IP': self.fake_ip,
+                }
+                payload_del = {
+                    'fingerprint': self.box_action_comp['fingerprint'],
+                    'serverMemo': self.box_action_comp['serverMemo'],
+                    'updates': [
+                        {'type': 'callMethod', 'payload': {'id': secrets.token_hex(3), 'method': 'deleteEmail', 'params': []}}
+                    ]
+                }
+                r = self.session.post('https://temp-mail.club/livewire/message/frontend.actions', json=payload_del, headers=lw_headers, timeout=10)
+                if r.status_code == 200:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def close(self):
+        """إغلاق جلسة المزود وتنظيف الموارد"""
+        try:
+            self.session.close()
+        except Exception:
+            pass
 
     def poll_otp(self, timeout: int = 75) -> Optional[str]:
         if not self.app_fingerprint or not self.app_server_memo:
@@ -335,53 +388,60 @@ def register_single_syntx_account(cfg: Config) -> Tuple[Optional[str], Optional[
         }
 
         tmc = TempMailClubProvider()
-        print(f"{YELLOW}[*] جاري توليد إيميل جديد عبر مزود: {CYAN}{tmc.PROVIDER_NAME}{RESET}...")
-        email = tmc.create_email()
-
-        if not email:
-            print(f"{RED}[✗] تعذر توليد إيميل صالح من مزود TempMailClub.{RESET}")
-            time.sleep(1)
-            continue
-
-        print(f"{GREEN}[✓] تم توليد الإيميل بنجاح ({tmc.PROVIDER_NAME}): {WHITE}{BRIGHT}{email}{RESET}")
-
-        # 1. إرسال طلب كود التحقق
-        print(f"{YELLOW}[*] إرسال طلب كود التحقق (OTP) إلى سيرفرات Syntx...{RESET}")
-        payload_send = {"email": email, "ref_uuid": None, "utm": ""}
+        email = None
         try:
-            r_send = cffi.post(f"{cfg.base_api_url}/auth/email/send-otp", json=payload_send, headers=headers_syntx, timeout=15)
-            if r_send.status_code != 200:
-                print(f"{RED}[✗] فشل إرسال كود التحقق ({r_send.status_code}): {r_send.text}{RESET}")
+            print(f"{YELLOW}[*] جاري توليد إيميل جديد عبر مزود: {CYAN}{tmc.PROVIDER_NAME}{RESET}...")
+            email = tmc.create_email()
+
+            if not email:
+                print(f"{RED}[✗] تعذر توليد إيميل صالح من مزود TempMailClub.{RESET}")
                 time.sleep(1)
                 continue
-        except Exception as e:
-            print(f"{RED}[✗] خطأ في الاتصال أثناء إرسال OTP: {e}{RESET}")
-            time.sleep(1)
-            continue
 
-        # 2. انتظار استلام كود التحقق بمهلة سريعة (Fast-Drop)
-        print(f"{MAGENTA}[⏳] بانتظار استلام كود التحقق (مهلة سريعة {cfg.otp_timeout} ثانية للنطاق)...{RESET}")
-        otp_code = tmc.poll_otp(timeout=cfg.otp_timeout)
-            
-        if not otp_code:
-            print(f"{YELLOW}⚡ [Fast-Drop] مهلة الـ OTP انتهت ({cfg.otp_timeout}s) دون وصول الكود! النطاق بطيء — يتم إسقاطه والتدوير فوراً.{RESET}")
-            continue
+            print(f"{GREEN}[✓] تم توليد الإيميل بنجاح ({tmc.PROVIDER_NAME}): {WHITE}{BRIGHT}{email}{RESET}")
 
-        print(f"{GREEN}[✓] تم استلام كود التحقق بنجاح: {WHITE}{BRIGHT}{otp_code}{RESET} ⚡")
+            # 1. إرسال طلب كود التحقق
+            print(f"{YELLOW}[*] إرسال طلب كود التحقق (OTP) إلى سيرفرات Syntx...{RESET}")
+            payload_send = {"email": email, "ref_uuid": None, "utm": ""}
+            try:
+                r_send = cffi.post(f"{cfg.base_api_url}/auth/email/send-otp", json=payload_send, headers=headers_syntx, timeout=15)
+                if r_send.status_code != 200:
+                    print(f"{RED}[✗] فشل إرسال كود التحقق ({r_send.status_code}): {r_send.text}{RESET}")
+                    time.sleep(1)
+                    continue
+            except Exception as e:
+                print(f"{RED}[✗] خطأ في الاتصال أثناء إرسال OTP: {e}{RESET}")
+                time.sleep(1)
+                continue
 
-        # 3. توثيق الكود واستخراج الـ Token
-        print(f"{YELLOW}[*] جاري توثيق الكود لدى Syntx واستخراج رمز الدخول (Bearer Token)...{RESET}")
-        payload_verify = {"email": email, "otp_code": otp_code, "ref_uuid": None, "utm": ""}
-        try:
-            r_ver = cffi.post(f"{cfg.base_api_url}/auth/email/verify-otp", json=payload_verify, headers=headers_syntx, timeout=15)
-            if r_ver.status_code == 200 and r_ver.json().get("success"):
-                token = r_ver.json().get("token")
-                print(f"{GREEN}[✓] تم توثيق الحساب بنجاح واستخراج الـ Token!{RESET}")
-                return token, email, tmc.PROVIDER_NAME
-            else:
-                print(f"{RED}[✗] فشل توثيق الكود: {r_ver.text}{RESET}")
-        except Exception as e:
-            print(f"{RED}[✗] خطأ أثناء توثيق الـ OTP: {e}{RESET}")
+            # 2. انتظار استلام كود التحقق بمهلة سريعة (Fast-Drop)
+            print(f"{MAGENTA}[⏳] بانتظار استلام كود التحقق (مهلة سريعة {cfg.otp_timeout} ثانية للنطاق)...{RESET}")
+            otp_code = tmc.poll_otp(timeout=cfg.otp_timeout)
+                
+            if not otp_code:
+                print(f"{YELLOW}⚡ [Fast-Drop] مهلة الـ OTP انتهت ({cfg.otp_timeout}s) دون وصول الكود! النطاق بطيء — يتم إسقاطه والتدوير فوراً.{RESET}")
+                continue
+
+            print(f"{GREEN}[✓] تم استلام كود التحقق بنجاح: {WHITE}{BRIGHT}{otp_code}{RESET} ⚡")
+
+            # 3. توثيق الكود واستخراج الـ Token
+            print(f"{YELLOW}[*] جاري توثيق الكود لدى Syntx واستخراج رمز الدخول (Bearer Token)...{RESET}")
+            payload_verify = {"email": email, "otp_code": otp_code, "ref_uuid": None, "utm": ""}
+            try:
+                r_ver = cffi.post(f"{cfg.base_api_url}/auth/email/verify-otp", json=payload_verify, headers=headers_syntx, timeout=15)
+                if r_ver.status_code == 200 and r_ver.json().get("success"):
+                    token = r_ver.json().get("token")
+                    print(f"{GREEN}[✓] تم توثيق الحساب بنجاح واستخراج الـ Token!{RESET}")
+                    return token, email, tmc.PROVIDER_NAME
+                else:
+                    print(f"{RED}[✗] فشل توثيق الكود: {r_ver.text}{RESET}")
+            except Exception as e:
+                print(f"{RED}[✗] خطأ أثناء توثيق الـ OTP: {e}{RESET}")
+        finally:
+            del_ok = tmc.delete_email()
+            if del_ok:
+                print(f"{CYAN}[🧹] تم حذف صندوق البريد ({email}) من مزود {tmc.PROVIDER_NAME} وتصفير الجلسة بنجاح.{RESET}")
+            tmc.close()
 
     print(f"{RED}[✗] تم تجاوز المهلة القصوى لإنشاء الحساب الواحد ({cfg.account_timeout} ثانية) دون نجاح.{RESET}")
     return None, None, None

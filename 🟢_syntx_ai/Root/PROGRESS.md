@@ -122,6 +122,14 @@
 - C5 تحديث حزمة الاختبارات `test_syntx_chat.py` باختبار Vision واجتياز **45 من 45 اختباراً بنجاح 100%**.
 - C6 إجراء فحص تشغيلي حي بتحليل الصورة `لقطة شاشة 2026-08-22 001652.png` عبر Claude Opus 4.8 واستلام الوصف التفصيلي لواجهة المكالمة بنجاح باهر في 11 ثانية.
 
+## Round 27 — Temp-Mail.club Zero-Purge Mailbox Lifecycle & Rate-Limit Hardening (2026-09-12)
+- C0 دراسة دورة حياة جلسة Laravel Livewire في temp-mail.club وكشف تراكم الإيميلات في مصفوفة `emails`.
+- C1 إضافة ميثود `delete_email()` داخل `TempMailClubProvider` لاستدعاء `deleteEmail` على `frontend.actions`.
+- C2 تغليف دورة التسجيل في `02_syntx_register.py` داخل `try ... finally` تضمن الحذف الفوري لصندوق البريد من سيرفر المزود وإغلاق الجلسة عند النجاح والـ Fast-Drop والفشل.
+- C3 تشميع المرساة التشفيرية `anchor_syntx_reg_v2_clean_purge` (SHA-256: `aa8360ea23a69e237dc2d9d67946b3de7b06aa6dfbe0920e8d2b9aba0fac1f1f`).
+- C4 إجراء اختبار ضغط حي لتسجيل 6 حسابات كاملة مع الحذف الذري لكل صندوق بريد، واجتياز 6/6 بنجاح ساحق (Exit 0) وارتفاع الخزان إلى 17 حساباً نشطاً.
+- C5 الرصد الميداني الحقيقي لاستجابة سيرفر Syntx عند تلاحق الطلبات بـ `429 Too many OTP requests from this IP` والتأكيد التجريبي لصمود النظام وتجاوز الـ Rate Limiter بفضل الفواصل الزمنية والتدوير.
+
 ## Remaining
 - [x] Round 15 delivered and merged (cd7a215) — but see R99: the merge itself violated Rule 10 and the merge-audit run is red
 - [x] Round 16 C0: ci_status can no longer miss the merge-audit run (self-test 6/6)

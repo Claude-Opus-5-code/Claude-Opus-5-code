@@ -67,3 +67,5 @@
 | anchor_syntx_chat_v1 | — | `.AAA_GGG_iii_VIBE_CODING/🟢_syntx_ai/01_syntx_chat.py` | 579 | `fc44d4d30062aec940d3359bd28532c2efbe42d976a83af7f7bc578b3a6449d8` | 2026-09-11 | Syntx Stage 4: Chat Clean & Background Refill Hook | Superseded |
 | anchor_syntx_refresh_v1 | — | `.AAA_GGG_iii_VIBE_CODING/🟢_syntx_ai/03_syntx_refresh.py` | 227 | `8d2f8dca6a20d2cca1b4936744998ff71d4b1b264f8f04ad2118ac855cad5192` | 2026-09-11 | Syntx Stage 3: Refresh Token & UTF-8 Windows Parity | **Active Sealed** |
 | anchor_syntx_chat_vision_v2 | anchor_syntx_chat_v1 | `.AAA_GGG_iii_VIBE_CODING/🟢_syntx_ai/01_syntx_chat.py` | 656 | `c3417a102e0865e0f1ef78798f0f2b1cbb9d1abad71dcb7dcf88bf8724e8d2c0` | 2026-09-11 | Syntx Stage 6: Full Vision & Image Upload Integration | **Active Sealed** |
+| anchor_syntx_reg_v2_clean_purge | anchor_syntx_reg_pre_t1 | `.AAA_GGG_iii_VIBE_CODING/🟢_syntx_ai/02_syntx_register.py` | 601 | `aa8360ea23a69e237dc2d9d67946b3de7b06aa6dfbe0920e8d2b9aba0fac1f1f` | 2026-09-12 | Syntx Stage 7: Mailbox Clean Deletion & Session Zero-Purge | **Active Sealed** |
+
