@@ -16,6 +16,14 @@ import stat
 import sys
 import tempfile
 
+# Configure Windows text streams before output or optional console wrapping.
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_POOL = BASE_DIR / 'accounts_syntx.json'
 API = 'https://api.syntx.ai/api/v1'

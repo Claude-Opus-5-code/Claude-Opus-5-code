@@ -262,7 +262,7 @@ class RefreshTests(unittest.TestCase):
         from urllib.parse import urlsplit
         count = 0
         for path in sorted((BASE / 'har').glob('*.har')):
-            for entry in json.loads(path.read_text())['log']['entries']:
+            for entry in json.loads(path.read_text(encoding='utf-8'))['log']['entries']:
                 url = urlsplit(entry['request']['url'])
                 if url.hostname != 'api.syntx.ai':
                     continue

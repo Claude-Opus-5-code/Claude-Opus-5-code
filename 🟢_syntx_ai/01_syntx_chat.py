@@ -13,28 +13,19 @@
     • Thinking Mode ON  (التفكير المتسلسل العميق Chain-of-Thought)
     • Planning Mode ON  (التخطيط المنهجي وتتبع خطوات المهام)
     • Web Search / Deep Research ON (البحث الحي على الويب والأدوات البرمجية)
-- خزان حسابات استباقي (Account Pool) في ملف accounts_syntx.json:
-    • سحب فوري للحسابات الجاهزة في 0.01 ثانية (Zero Startup Latency).
-    • خيط خلفي ذكي (Background Daemon Thread) يولد 5 حسابات تلقائياً.
-    • حماية ذرية للملفات (Atomic Write & Thread-Safe Locking).
-- محرك بريد متطور:
-    • 🌟 Temp-Mail.club (Livewire + rc.mailings.live / msp.mailings.live).
-- شات مفتوح بدون ليمت رسائل + ملفات chat_send.txt و chat_reply.txt.
+- الحسابات المعتمدة الجاهزة فقط من accounts_syntx.json.
+- لا تسجيل أو بريد مؤقت أو عمليات إنشاء خلفية داخل الشات.
+- عند غياب حساب جاهز، ينتهي الشات برسالة واضحة دون انتظار.
+- spawn_background_refill خطاف خامل محجوز فقط؛ لا يتم استدعاؤه.
+- ملفات الإدخال والإخراج: chat_send.txt و chat_reply.txt بترميز UTF-8.
 ══════════════════════════════════════════════════════════════════════
 """
 from dataclasses import dataclass, field
 import json
-import os
 import sys
 import time
 import pathlib
 import argparse
-import re
-import urllib.parse
-import tempfile
-import random
-import string
-import secrets
 import threading
 
 # ضبط ترميز الطرفية للويندوز لدعم العربي والإيموجي
@@ -86,20 +77,9 @@ class Config:
     # 🌐 الرابط الأساسي لواجهة Syntx AI
     base_api_url: str = "https://api.syntx.ai/api/v1"
     
-    # 🗄️ إعدادات خزان الحسابات التلقائي (Background Account Pool)
+    # Approved accounts are supplied externally; chat never creates accounts.
     accounts_file: str = "accounts_syntx.json"
-    min_pool_size: int = 5                  # الحد الأدنى للحسابات الجاهزة في الخلفية
-    auto_refill_background: bool = True     # تفعيل خيط التوليد في الخلفية تلقائياً
-    background_check_interval: int = 20     # ثواني فحص الخزان في الخلفية
-    
-    # 📧 إعدادات مزودات البريد المؤقت
-    email_provider: str = "tempmailclub"
-    preferred_domains: list[str] = field(default_factory=lambda: ["rc.mailings.live", "msp.mailings.live"])
-    
-    # 🔑 توكن الجلسة (لو تم تمريره يدوياً عبر CLI)
-    auth_token: str | None = None
-    chat_uuid: str | None = None
-    
+
     # 📂 مسارات ملفات الإدخال والإخراج
     input_file: str = "chat_send.txt"
     output_file: str = "chat_reply.txt"
@@ -109,7 +89,6 @@ class Config:
     max_chars: int | None = None
     
     # ⏱️ مهل الانتظار بالثواني
-    otp_timeout: int = 90
     reply_timeout: int = 120
     
     # 🎭 البرومبت العام للنظام
@@ -135,7 +114,10 @@ def load_accounts_pool(cfg: Config) -> list[dict]:
             content = path.read_text(encoding="utf-8").strip()
             if not content:
                 return []
-            return json.loads(content)
+            accounts = json.loads(content)
+            if not isinstance(accounts, list) or any(not isinstance(acc, dict) for acc in accounts):
+                return []
+            return accounts
         except Exception:
             return []
 
@@ -155,11 +137,24 @@ def save_accounts_pool(accounts: list[dict], cfg: Config):
             except Exception:
                 pass
 
+def is_ready_account(account: dict) -> bool:
+    """Local readiness only; server-side validity is not inferred."""
+    token = account.get("token")
+    return (account.get("status") == "active" and isinstance(token, str)
+            and bool(token) and token.isascii()
+            and all(33 <= ord(char) <= 126 for char in token))
+
+
+def warn_no_ready_accounts(cfg: Config):
+    print(f"تنبيه: لا توجد حسابات معتمدة جاهزة في {cfg.accounts_file}. "
+          "انتهت الجلسة دون انتظار أو إنشاء حسابات.")
+
+
 def get_active_account(cfg: Config) -> dict | None:
     """جلب أول حساب نشط جاهز للاستخدام من الخزان فوراً"""
     accounts = load_accounts_pool(cfg)
     for acc in accounts:
-        if acc.get("status") == "active" and acc.get("token"):
+        if is_ready_account(acc):
             return acc
     return None
 
@@ -181,194 +176,10 @@ def mark_account_expired(token: str, cfg: Config):
     else:
         print(f"{Fore.RED}🗑️ [تنظيف الخزان] تم استبعاد الحسابات المنتهية من {cfg.accounts_file}.{Style.RESET_ALL}")
 
-def add_account_to_pool(email: str, token: str, provider: str, chat_uuid: str | None, cfg: Config):
-    """إضافة حساب جديد مفعل إلى الخزان"""
-    accounts = load_accounts_pool(cfg)
-    new_acc = {
-        "email": email,
-        "token": token,
-        "chat_uuid": chat_uuid,
-        "provider": provider,
-        "status": "active",
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-    }
-    accounts = [a for a in accounts if a.get("email") != email]
-    accounts.append(new_acc)
-    save_accounts_pool(accounts, cfg)
-
 
 # ======================================================================
-# 🛠️ محرك الإيميلات والتسجيل التلقائي (Email Providers Engine)
+# Chat sessions for existing approved accounts
 # ======================================================================
-class TempMailClubProvider:
-    """عميل temp-mail.club الرسمي المتطابق مع Livewire لدومينات rc.mailings.live مع تدوير IP"""
-    def __init__(self):
-        self.PROVIDER_NAME = "tempmailclub"
-        self.session = cffi.Session(impersonate="chrome124")
-        self.fake_ip = f"{random.randint(11, 190)}.{random.randint(1, 254)}.{random.randint(1, 254)}.{random.randint(1, 254)}"
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-            'X-Forwarded-For': self.fake_ip,
-            'X-Real-IP': self.fake_ip,
-            'Client-IP': self.fake_ip,
-        }
-        self.csrf_token = ""
-        self.email = ""
-        self.app_fingerprint = None
-        self.app_server_memo = None
-
-    def create_email(self) -> str | None:
-        try:
-            r_home = self.session.get('https://temp-mail.club/', headers=self.headers, timeout=15)
-            m_csrf = re.search(r'name=["\']csrf-token["\']\s+content=["\']([^"\']+)["\']', r_home.text) or re.search(r'content=["\']([^"\']+)["\']\s+name=["\']csrf-token["\']', r_home.text)
-            self.csrf_token = m_csrf.group(1) if m_csrf else ''
-            
-            matches = re.findall(r'wire:initial-data=["\']([^"\']+)["\']', r_home.text)
-            action_comp = None
-            for m in matches:
-                j = json.loads(m.replace('&quot;', '"').replace('&#039;', "'"))
-                if j.get('fingerprint', {}).get('name') == 'frontend.actions':
-                    action_comp = j
-                    break
-                    
-            if not action_comp:
-                return None
-                
-            lw_headers = {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': self.csrf_token,
-                'X-Livewire': 'true',
-                'Origin': 'https://temp-mail.club',
-                'Referer': 'https://temp-mail.club/',
-                'Accept': 'text/html, application/xhtml+xml',
-                'X-Forwarded-For': self.fake_ip,
-                'X-Real-IP': self.fake_ip,
-                'Client-IP': self.fake_ip,
-            }
-            
-            payload = {
-                'fingerprint': action_comp['fingerprint'],
-                'serverMemo': action_comp['serverMemo'],
-                'updates': [
-                    {'type': 'callMethod', 'payload': {'id': secrets.token_hex(3), 'method': 'random', 'params': []}}
-                ]
-            }
-            self.session.post('https://temp-mail.club/livewire/message/frontend.actions', json=payload, headers=lw_headers, timeout=10)
-            
-            r_box = self.session.get('https://temp-mail.club/mailbox', headers=self.headers, timeout=10)
-            for mb in re.findall(r'wire:initial-data=["\']([^"\']+)["\']', r_box.text):
-                mb_j = json.loads(mb.replace('&quot;', '"').replace('&#039;', "'"))
-                if mb_j.get('fingerprint', {}).get('name') == 'frontend.app':
-                    self.email = mb_j.get('serverMemo', {}).get('data', {}).get('email', '')
-                    self.app_fingerprint = mb_j.get('fingerprint')
-                    self.app_server_memo = mb_j.get('serverMemo')
-                    return self.email
-        except Exception:
-            pass
-        return None
-
-    def poll_otp(self, timeout: int = 75) -> str | None:
-        if not self.app_fingerprint or not self.app_server_memo:
-            return None
-        lw_headers = {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': self.csrf_token,
-            'X-Livewire': 'true',
-            'Origin': 'https://temp-mail.club',
-            'Referer': 'https://temp-mail.club/mailbox',
-            'Accept': 'text/html, application/xhtml+xml',
-            'X-Forwarded-For': self.fake_ip,
-            'X-Real-IP': self.fake_ip,
-            'Client-IP': self.fake_ip,
-        }
-        start = time.time()
-        while time.time() - start < timeout:
-            time.sleep(3)
-            payload = {
-                'fingerprint': self.app_fingerprint,
-                'serverMemo': self.app_server_memo,
-                'updates': [{'type': 'fireEvent', 'payload': {'id': secrets.token_hex(3), 'event': 'fetchMessages', 'params': []}}]
-            }
-            try:
-                r_msg = self.session.post('https://temp-mail.club/livewire/message/frontend.app', json=payload, headers=lw_headers, timeout=10)
-                if r_msg.status_code == 200:
-                    res_j = r_msg.json()
-                    if 'serverMemo' in res_j:
-                        self.app_server_memo.update(res_j['serverMemo'])
-                    html = res_j.get('effects', {}).get('html', '') or ''
-                    msgs = res_j.get('serverMemo', {}).get('data', {}).get('messages', [])
-                    for m_item in msgs:
-                        content = m_item.get('content', '') or m_item.get('subject', '')
-                        m = re.search(r'\b(\d{6})\b', content)
-                        if m:
-                            return m.group(1)
-                    if 'verification code' in html.lower():
-                        m = re.search(r'\b(\d{6})\b', html)
-                        if m:
-                            return m.group(1)
-            except Exception:
-                pass
-        return None
-
-
-def register_single_syntx_account(cfg: Config, verbose: bool = True) -> tuple[str | None, str | None, str | None]:
-    """تسجيل حساب مفرد واستخراج (token, email, provider) عبر مزود TempMailClub"""
-    tmc = TempMailClubProvider()
-    email = tmc.create_email()
-    provider_name = tmc.PROVIDER_NAME
-
-    if not email:
-        if verbose:
-            print(f"{Fore.RED}❌ تعذر الحصول على إيميل من مزود TempMailClub.{Style.RESET_ALL}")
-        return None, None, None
-        
-    if verbose:
-        print(f"{Fore.GREEN}📧 تم توليد الإيميل: {Fore.CYAN}{email} ({provider_name}){Style.RESET_ALL}")
-    
-    # 1. إرسال كود OTP
-    headers_syntx = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
-        "Content-Type": "application/json"
-    }
-    payload_send = {"email": email, "ref_uuid": None, "utm": ""}
-    
-    try:
-        r_send = cffi.post(f"{cfg.base_api_url}/auth/email/send-otp", json=payload_send, headers=headers_syntx, timeout=15)
-        if r_send.status_code != 200 or not r_send.json().get("success"):
-            if verbose:
-                print(f"{Fore.RED}❌ فشل إرسال كود OTP: {r_send.text}{Style.RESET_ALL}")
-            return None, None, None
-    except Exception as e:
-        if verbose:
-            print(f"{Fore.RED}❌ خطأ اتصال أثناء إرسال OTP: {e}{Style.RESET_ALL}")
-        return None, None, None
-
-    if verbose:
-        print(f"{Fore.YELLOW}⏳ تم إرسال كود التحقق — بانتظار استلام الـ OTP...{Style.RESET_ALL}")
-    
-    # 2. استخراج OTP
-    otp_code = tmc.poll_otp(timeout=cfg.otp_timeout)
-
-    if not otp_code:
-        if verbose:
-            print(f"{Fore.RED}❌ لم يتم استلام كود OTP خلال المهلة.{Style.RESET_ALL}")
-        return None, None, None
-        
-    if verbose:
-        print(f"{Fore.GREEN}🎉 تم استلام كود التحقق: {Fore.YELLOW}{otp_code}{Style.RESET_ALL}")
-    
-    # 3. توثيق OTP
-    payload_verify = {"email": email, "otp_code": otp_code, "ref_uuid": None, "utm": ""}
-    try:
-        r_ver = cffi.post(f"{cfg.base_api_url}/auth/email/verify-otp", json=payload_verify, headers=headers_syntx, timeout=15)
-        if r_ver.status_code == 200 and r_ver.json().get("success"):
-            token = r_ver.json().get("token")
-            return token, email, provider_name
-    except Exception:
-        pass
-        
-    return None, None, None
 
 
 def create_syntx_chat(token: str, cfg: Config) -> str | None:
@@ -388,75 +199,17 @@ def create_syntx_chat(token: str, cfg: Config) -> str | None:
     return None
 
 
-def refill_accounts_pool(cfg: Config, target_size: int | None = None, verbose: bool = True):
-    """ملء خزان الحسابات إلى العدد المستهدف مع طباعة التقدم"""
-    target = target_size or cfg.min_pool_size
-    accounts = load_accounts_pool(cfg)
-    active_count = sum(1 for a in accounts if a.get("status") == "active" and a.get("token"))
-    
-    if verbose:
-        print(f"\n{Fore.CYAN}🔋 فحص خزان الحسابات: {Fore.YELLOW}{active_count} / {target} حساب نشط.{Style.RESET_ALL}")
-    
-    while active_count < target:
-        if verbose:
-            print(f"{Fore.YELLOW}⏳ جاري تسجيل حساب نشط جديد ({active_count + 1} من {target})...{Style.RESET_ALL}")
-        token, email, prov = register_single_syntx_account(cfg, verbose=verbose)
-        if token and email:
-            chat_uuid = create_syntx_chat(token, cfg)
-            add_account_to_pool(email, token, prov, chat_uuid, cfg)
-            if verbose:
-                print(f"{Fore.GREEN}✅ تم تفعيل وتثبيت الحساب في الخزان: {Fore.WHITE}{email}{Style.RESET_ALL}\n")
-        else:
-            if verbose:
-                print(f"{Fore.RED}⚠️ فشل تسجيل الحساب، جاري إعادة المحاولة...{Style.RESET_ALL}\n")
-            time.sleep(3)
-            
-        accounts = load_accounts_pool(cfg)
-        active_count = sum(1 for a in accounts if a.get("status") == "active" and a.get("token"))
-
-    if verbose:
-        print(f"{Fore.GREEN}🎉 اكتمل ملء خزان الحسابات بنجاح! الإجمالي: {Fore.YELLOW}{active_count} حساب نشط ⚡{Style.RESET_ALL}\n")
-
-
-def _background_pool_refill_worker(cfg: Config):
-    """خيط خلفي دائم يفحص خزان الحسابات ويعيد ملئه تلقائياً حتى 5 حسابات بدون توقف"""
-    while True:
-        try:
-            accounts = load_accounts_pool(cfg)
-            active_count = sum(1 for a in accounts if a.get("status") == "active" and a.get("token"))
-            
-            while active_count < cfg.min_pool_size:
-                token, email, prov = register_single_syntx_account(cfg, verbose=False)
-                if token and email:
-                    chat_uuid = create_syntx_chat(token, cfg)
-                    add_account_to_pool(email, token, prov, chat_uuid, cfg)
-                else:
-                    time.sleep(3)
-                accounts = load_accounts_pool(cfg)
-                active_count = sum(1 for a in accounts if a.get("status") == "active" and a.get("token"))
-            
-            time.sleep(cfg.background_check_interval)
-        except Exception:
-            time.sleep(15)
-
-def start_background_account_worker(cfg: Config):
-    """بدء تشغيل الخيط الخلفي كـ Daemon Thread"""
-    if cfg.auto_refill_background:
-        t = threading.Thread(target=_background_pool_refill_worker, args=(cfg,), daemon=True, name="SyntxPoolRefillThread")
-        t.start()
-
-
 # ======================================================================
 # 🚀 محرك الشات والتوليد والإحصائيات
 # ======================================================================
 def print_banner(cfg: Config):
     """طباعة بانر نيون يوضح النخبة المختارة وحالة التفكير والخزان"""
     accounts = load_accounts_pool(cfg)
-    active_count = sum(1 for a in accounts if a.get("status") == "active" and a.get("token"))
+    active_count = sum(1 for a in accounts if is_ready_account(a))
 
     print(f"\n{Fore.GREEN}╔{'═'*74}╗")
     print(f"║  🟢 Syntx AI Chat — The Elite 4 AI Models (GPT 5.6, Claude, Grok 4.6)  ║")
-    print(f"║  🚀 تشغيل فوري (0.01s) + خزان خلفي جاهز في {cfg.accounts_file:<27}║")
+    print(f"║  الحسابات الجاهزة فقط: {cfg.accounts_file}")
     print(f"╚{'═'*74}╝{Style.RESET_ALL}")
     
     print(f"{Fore.CYAN}📋 قائمة النخبة المعتمدة (اختر بالرقم أو الاسم):")
@@ -473,7 +226,7 @@ def print_banner(cfg: Config):
     print(f"{Fore.MAGENTA}🎯 الموديل النشط الحالي : {Fore.YELLOW}{current_info['label']} ({cfg.model}){Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}🧠 التفكير (Thinking) : {th_status} {Fore.MAGENTA}| 📋 التخطيط (Planning): {pl_status}{Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}🌐 بحث الويب (Search)  : {sr_status} {Fore.MAGENTA}| 🛠️ أدوات البرمجة: {Fore.GREEN}مفعّلة ✅{Style.RESET_ALL}")
-    print(f"{Fore.MAGENTA}🔋 الحسابات بالخزان     : {Fore.GREEN}{active_count} / {cfg.min_pool_size} حساب نشط ⚡{Style.RESET_ALL}")
+    print(f"الحسابات الجاهزة بالخزان: {active_count}؛ لا يوجد تسجيل تلقائي.")
     print(f"{Fore.MAGENTA}📂 ملف الإدخال          : {Fore.WHITE}{cfg.input_file}{Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}💾 ملف الإخراج          : {Fore.WHITE}{cfg.output_file}{Style.RESET_ALL}")
     print(f"{Fore.GREEN}{'─'*76}{Style.RESET_ALL}\n")
@@ -505,23 +258,13 @@ def read_input_content(cfg: Config) -> tuple[str, str]:
 
 
 def acquire_session_token(cfg: Config) -> tuple[str | None, str | None]:
-    """الحصول على توكن نشط: من الخزان فوراً (0.01s) أو إنشاء جديد"""
-    if cfg.auth_token:
-        chat_uuid = cfg.chat_uuid or create_syntx_chat(cfg.auth_token, cfg)
-        return cfg.auth_token, chat_uuid
-
+    """Acquire a session exclusively from an existing approved pool record."""
     acc = get_active_account(cfg)
     if acc:
         token = acc["token"]
         chat_uuid = acc.get("chat_uuid") or create_syntx_chat(token, cfg)
         return token, chat_uuid
-
-    token, email, prov = register_single_syntx_account(cfg, verbose=True)
-    if token and email:
-        chat_uuid = create_syntx_chat(token, cfg)
-        add_account_to_pool(email, token, prov, chat_uuid, cfg)
-        return token, chat_uuid
-
+    warn_no_ready_accounts(cfg)
     return None, None
 
 
@@ -667,6 +410,9 @@ def interactive_chat_mode(cfg: Config):
     
     msg_count = 0
     while True:
+        if get_active_account(cfg) is None:
+            warn_no_ready_accounts(cfg)
+            return
         try:
             m_label = cfg.available_models.get(cfg.model, {}).get("label", cfg.model)
             user_input = input(f"{Fore.WHITE}👤 أنت [{Fore.YELLOW}{m_label}{Fore.WHITE}]: {Style.RESET_ALL}").strip()
@@ -724,6 +470,11 @@ def interactive_chat_mode(cfg: Config):
             break
 
 
+def spawn_background_refill():
+    """خطاف محجوز للبيئات المعتمدة"""
+    pass
+
+
 def main():
     """نقطة الدخول الرئيسية - تدعم الـ CLI واختيار الموديلات والتفكير والبحث"""
     parser = argparse.ArgumentParser(description="Syntx AI Chat — The Elite 4 AI Models")
@@ -732,9 +483,7 @@ def main():
     parser.add_argument("--no-thinking", action="store_true", help="تعطيل وضع التفكير العميق")
     parser.add_argument("--no-plan", action="store_true", help="تعطيل وضع التخطيط المنهجي")
     parser.add_argument("--no-search", action="store_true", help="تعطيل بحث الويب والأدوات")
-    parser.add_argument("--refill", action="store_true", help="ملء خزان الحسابات إلى 5 حسابات فوراً مع طباعة التقدم")
     parser.add_argument("--count", "-c", action="store_true", help="عرض عدد الحسابات النشطة في الخزان فقط")
-    parser.add_argument("--pool-size", type=int, default=None, help="تحديد عدد الحسابات الجاهزة بالخزان")
     parser.add_argument("--file", "-f", type=str, default=None, help="تحديد ملف الإدخال (الافتراضي chat_send.txt)")
     parser.add_argument("--output", "-o", type=str, default=None, help="تحديد ملف الإخراج (الافتراضي chat_reply.txt)")
     parser.add_argument("--cli", action="store_true", help="بدء الشات التفاعلي فوراً")
@@ -769,8 +518,6 @@ def main():
     if args.no_search:
         cfg.deep_research = False
         cfg.enable_tools = False
-    if args.pool_size:
-        cfg.min_pool_size = args.pool_size
     if args.file:
         cfg.input_file = args.file
     if args.output:
@@ -779,22 +526,13 @@ def main():
     # لو تم طلب عرض عدد الحسابات فقط
     if args.count:
         accounts = load_accounts_pool(cfg)
-        active = sum(1 for a in accounts if a.get("status") == "active" and a.get("token"))
+        active = sum(1 for a in accounts if is_ready_account(a))
         print(f"\n{Fore.CYAN}📊 إجمالي الحسابات النشطة في الخزان: {Fore.GREEN}{active}{Style.RESET_ALL} حساب جاهز.\n")
         return
 
-    # لو تم طلب ملء الخزان فورياً
-    if args.refill:
-        refill_accounts_pool(cfg, target_size=cfg.min_pool_size, verbose=True)
+    if get_active_account(cfg) is None:
+        warn_no_ready_accounts(cfg)
         return
-
-    # ضمان وجود 5 حسابات جاهزة بالخزان عند تشغيل الشات
-    accounts = load_accounts_pool(cfg)
-    active_count = sum(1 for a in accounts if a.get("status") == "active" and a.get("token"))
-    if active_count < cfg.min_pool_size:
-        refill_accounts_pool(cfg, target_size=cfg.min_pool_size, verbose=True)
-
-    start_background_account_worker(cfg)
 
     print_banner(cfg)
 
