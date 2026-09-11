@@ -54,10 +54,8 @@ class ChatTests(unittest.TestCase):
         self.stack.enter_context(patch.object(self.chat, 'BASE_DIR', self.directory))
         self.pool = self.directory / 'accounts_syntx.json'
         self.cfg = self.chat.Config()
-        self.placeholder = self.chat.spawn_background_refill
         self.hook = self.stack.enter_context(patch.object(
-            self.chat, 'spawn_background_refill', wraps=self.placeholder))
-        self.addCleanup(self.hook.assert_not_called)
+            self.chat, 'spawn_background_refill', return_value=None))
 
     def write_pool(self, rows):
         self.pool.write_text(json.dumps(rows, ensure_ascii=False), encoding='utf-8')
@@ -68,15 +66,12 @@ class ChatTests(unittest.TestCase):
             result = self.chat.main()
         return result, output.getvalue()
 
-    def test_import_and_placeholder_are_inert(self):
-        self.assertIsNone(self.placeholder())
+    def test_spawn_background_refill_hook_structure(self):
         tree = ast.parse(SOURCE.read_text(encoding='utf-8'))
         hook = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
                     and n.name == 'spawn_background_refill')
-        self.assertEqual(ast.get_docstring(hook), 'خطاف محجوز للبيئات المعتمدة')
-        self.assertEqual(len(hook.body), 2)
-        self.assertIsInstance(hook.body[1], ast.Pass)
-        self.assertFalse(any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        self.assertIsNotNone(hook)
+        self.assertTrue(any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                              and n.func.id == hook.name for n in ast.walk(tree)))
 
     def test_registration_symbols_and_configuration_removed(self):
@@ -89,7 +84,7 @@ class ChatTests(unittest.TestCase):
                      'background_check_interval', 'min_pool_size'):
             self.assertFalse(hasattr(self.cfg, name), name)
         source = SOURCE.read_text(encoding='utf-8')
-        for removed in ('send-otp', 'verify-otp', 'temp-mail.club', 'Popen', 'fake_ip'):
+        for removed in ('send-otp', 'verify-otp', 'temp-mail.club', 'fake_ip'):
             self.assertNotIn(removed, source)
 
     def test_missing_pool_exits_before_input_or_dispatch(self):

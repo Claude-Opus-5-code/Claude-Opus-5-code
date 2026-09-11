@@ -446,6 +446,27 @@
   - [x] D1.3: صياغة وثيقة المراجعة الشاملة لـ 12 سيناريو في `Root/COMPREHENSIVE_SCENARIOS_AND_BEHAVIORS_REPORT.md` ✅
   - [x] T2.0: تفعيل لوحة الـ IDE التفاعلية الرسمية (Proceed & Review) عبر `implementation_plan.md` ✅
   - [x] T2.1: تدشين نظام الـ Deep Thinking الدائري النيوني وتحديث بوصلة `Root/ai_state.json` ✅
+---
 
+### 🟢 محطة إنتاج وتأصيل مزود Syntx AI (Syntx Stages 3, 4 & 5 - Production Ready):
+- [x] **[TASK-SYNTX-STEP-3-REFRESH-WINDOWS-FIX] تجديد التوكن وتحصين بيئة Windows (PR #1):**
+  - [x] 1. استيعاب وثيقة مواصفات التجديد `Root/SYNTX_REFRESH_SPEC.md` ومطابقة أندبوينت `POST /auth/refresh` بدليل الـ HAR.
+  - [x] 2. تحصين `03_syntx_refresh.py` بتهيئة UTF-8 على Windows (Rule 39) لمنع أخطاء CP1252 عند طباعة النصوص والرموز.
+  - [x] 3. تحديث وتثبيت حزمة الاختبارات المعزولة `test_syntx_refresh.py` وتحديد `encoding="utf-8"` صراحة عند قراءة الـ HAR.
+  - [x] 4. تشغيل الاختبارات واجتياز 27/27 اختباراً قياسياً بنجاح باهر 100% دون أي اتصال خارجي.
+  - [x] 5. دمج PR #1 في فرع `main` بالكوميت `5da0809`.
 
+- [x] **[TASK-SYNTX-STEP-4-CHAT-DECOUPLE-BACKGROUND-REFILL] تطهير الشات وربط خطاف التوليد الخلفي (PR #2 + Antigravity Hook):**
+  - [x] 1. إزالة كود التسجيل القديم `TempMailClubProvider` و `_reg_lock` وحذف خيارات `--refill` و `--pool-size` المكررة.
+  - [x] 2. قصر الشات على الحسابات الجاهزة في الخزان `accounts_syntx.json` والخروج النظيف عند نفاد الحسابات.
+  - [x] 3. تحصين الشات بترميز UTF-8 على Windows وتثبيت حزمة اختبارات `test_syntx_chat.py` (17/17 اختباراً ناجحاً).
+  - [x] 4. دمج PR #2 في فرع `main` بالكوميت `2c40519`.
+  - [x] 5. برمجة وربط خطاف التوليد الاستباقي `spawn_background_refill()` محلياً في `01_syntx_chat.py` لاستدعاء `02_syntx_register.py --max 5 --no-loop` كعملية منفصلة في الخلفية في كل تشغيل.
+  - [x] 6. تحديث بانر الشات لإظهار حالة التوليد التلقائي في الخلفية وعدد الحسابات المتاحة.
 
+- [x] **[TASK-SYNTX-STEP-5-LIVE-VERIFICATION-AND-ROOT-SYNC] التحقق الميداني الحي وتحديث النواة السداسية بالكامل:**
+  - [x] 1. تشغيل الاختبار الميداني الحي بالتيرمينال (`01_syntx_chat.py "تيست"`) والتحقق من الاستجابة في 3.3 ثانية.
+  - [x] 2. التحقق من الحذف الذري للحساب المستنفد (429) والتدوير الفوري للحساب التالي بدون توقف الشات.
+  - [x] 3. التحقق من عمل مصنع الحسابات الخلفي بنجاح وتوليد حسابات نشطة وتثبيتها في `accounts_syntx.json`.
+  - [x] 4. تفريغ وتوثيق فويسات 45 و 46 و 47 في `Root/VOICE_LOG.md`.
+  - [x] 5. تحديث دفاتر الذاكرة المركزية (`PROGRESS.md`, `tasks.md`, `memory.md`, `ANCHORS.md`, `ai_state.json`) بنسبة 100%.

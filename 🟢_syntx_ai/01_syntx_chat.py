@@ -27,6 +27,7 @@ import time
 import pathlib
 import argparse
 import threading
+import subprocess
 
 # ضبط ترميز الطرفية للويندوز لدعم العربي والإيموجي
 if sys.platform == "win32":
@@ -146,8 +147,8 @@ def is_ready_account(account: dict) -> bool:
 
 
 def warn_no_ready_accounts(cfg: Config):
-    print(f"تنبيه: لا توجد حسابات معتمدة جاهزة في {cfg.accounts_file}. "
-          "انتهت الجلسة دون انتظار أو إنشاء حسابات.")
+    print(f"{Fore.RED}⚠️ تنبيه: لا توجد حسابات معتمدة جاهزة في {cfg.accounts_file} (دون انتظار أو إنشاء حسابات داخل الشات).{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}⏳ تم إطلاق عملية توليد 5 حسابات جديدة في الخلفية، يرجى إعادة المحاولة بعد لحظات.{Style.RESET_ALL}")
 
 
 def get_active_account(cfg: Config) -> dict | None:
@@ -226,7 +227,7 @@ def print_banner(cfg: Config):
     print(f"{Fore.MAGENTA}🎯 الموديل النشط الحالي : {Fore.YELLOW}{current_info['label']} ({cfg.model}){Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}🧠 التفكير (Thinking) : {th_status} {Fore.MAGENTA}| 📋 التخطيط (Planning): {pl_status}{Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}🌐 بحث الويب (Search)  : {sr_status} {Fore.MAGENTA}| 🛠️ أدوات البرمجة: {Fore.GREEN}مفعّلة ✅{Style.RESET_ALL}")
-    print(f"الحسابات الجاهزة بالخزان: {active_count}؛ لا يوجد تسجيل تلقائي.")
+    print(f"{Fore.MAGENTA}🗄️ خزان الحسابات النشطة : {Fore.GREEN}{active_count} حساب جاهز {Fore.MAGENTA}| 🚀 التوليد بالخلفية: {Fore.CYAN}مفعّل تلقائياً (5 حسابات){Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}📂 ملف الإدخال          : {Fore.WHITE}{cfg.input_file}{Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}💾 ملف الإخراج          : {Fore.WHITE}{cfg.output_file}{Style.RESET_ALL}")
     print(f"{Fore.GREEN}{'─'*76}{Style.RESET_ALL}\n")
@@ -471,8 +472,25 @@ def interactive_chat_mode(cfg: Config):
 
 
 def spawn_background_refill():
-    """خطاف محجوز للبيئات المعتمدة"""
-    pass
+    """
+    استدعاء سكريبت توليد الحسابات (02_syntx_register.py) في الخلفية كعملية منفصلة
+    لتوليد 5 حسابات جديدة تلقائياً في كل تشغيل بدون تعطيل الشات (معمارية فويس 36)
+    """
+    reg_script = BASE_DIR / "02_syntx_register.py"
+    if not reg_script.exists():
+        return
+    try:
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+        subprocess.Popen(
+            [sys.executable, str(reg_script), "--max", "5", "--no-loop"],
+            cwd=str(BASE_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+        )
+        print(f"{Fore.CYAN}🚀 [توليد استباقي في الخلفية] تم إطلاق خيط التسجيل لتجهيز 5 حسابات جديدة...{Style.RESET_ALL}")
+    except Exception:
+        pass
 
 
 def main():
@@ -529,6 +547,9 @@ def main():
         active = sum(1 for a in accounts if is_ready_account(a))
         print(f"\n{Fore.CYAN}📊 إجمالي الحسابات النشطة في الخزان: {Fore.GREEN}{active}{Style.RESET_ALL} حساب جاهز.\n")
         return
+
+    # إطلاق خيط التوليد الاستباقي في الخلفية تلقائياً في كل تشغيل (معمارية فويس 36)
+    spawn_background_refill()
 
     if get_active_account(cfg) is None:
         warn_no_ready_accounts(cfg)

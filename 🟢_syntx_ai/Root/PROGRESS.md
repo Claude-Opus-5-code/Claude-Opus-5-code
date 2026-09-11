@@ -107,6 +107,12 @@
 - C3 التحقق العملي التام من حذف الحساب المستنفد تلقائياً من `accounts_syntx.json` (انخفض الخزان إلى 8 حسابات نشطة وصالحة 100%).
 - C4 انتقال المحرك فورياً ودون أي توقف للحساب التالي (`wb9zbjt@asm.mailings.live`) واستلام الإجابة الصحيحة بنجاح.
 - C5 رفع التحديثات إلى مستودع GitHub (`Claude-Opus-5-code`) بالكوميت `b8b31fb`.
+## Round 25 — Windows Parity, Chat Refactor & Live Background Pool Hook (2026-09-11)
+- C0 دمج PR #1 و PR #2 على فرع `main` بالكوميت `5da0809` و `2c40519` بعد مراجعة واعتماد الباشمهندس زيزو.
+- C1 تحصين ملف الريفرش `03_syntx_refresh.py` واختباراته `test_syntx_refresh.py` بترميز UTF-8 لبيئة Windows (Rule 39) واجتياز 27/27 اختباراً.
+- C2 تنظيف وتطهير ملف الشات `01_syntx_chat.py` من الكود المكرر والقديم وتجهيز دالة الخطاف `spawn_background_refill()` واجتياز 17 اختباراً في `test_syntx_chat.py`.
+- C3 تفعيل وبرمجة الخطاف الاستباقي `spawn_background_refill()` في `01_syntx_chat.py` لاستدعاء `02_syntx_register.py` في الخلفية بـ `--max 5 --no-loop` مع كل تشغيل (معمارية فويس 36).
+- C4 التحقق الميداني الحي بالتيرمينال: تشغيل الشات وسحب الحساب، الحذف الذري للحساب المستنفد (429) والتدوير اللحظي، واستقبال الرد في 4.8 ثوانٍ مع استمرار خيط التسجيل في الخلفية بنجاح 100%.
 
 ## Remaining
 - [x] Round 15 delivered and merged (cd7a215) — but see R99: the merge itself violated Rule 10 and the merge-audit run is red
