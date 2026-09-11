@@ -113,6 +113,14 @@
 - C2 تنظيف وتطهير ملف الشات `01_syntx_chat.py` من الكود المكرر والقديم وتجهيز دالة الخطاف `spawn_background_refill()` واجتياز 17 اختباراً في `test_syntx_chat.py`.
 - C3 تفعيل وبرمجة الخطاف الاستباقي `spawn_background_refill()` في `01_syntx_chat.py` لاستدعاء `02_syntx_register.py` في الخلفية بـ `--max 5 --no-loop` مع كل تشغيل (معمارية فويس 36).
 - C4 التحقق الميداني الحي بالتيرمينال: تشغيل الشات وسحب الحساب، الحذف الذري للحساب المستنفد (429) والتدوير اللحظي، واستقبال الرد في 4.8 ثوانٍ مع استمرار خيط التسجيل في الخلفية بنجاح 100%.
+## Round 26 — Syntx AI Image Vision Integration & Live Multi-Modal Testing (2026-09-11)
+- C0 دراسة الـ HAR (مدخل #332 و #338 و #352 و #355) وتأكيد دعم أندبوينت `POST /api/v1/chats/upload-files` ومصفوفة `files` في التوليد.
+- C1 صياغة وثيقة المواصفات الهندسية `Root/SYNTX_IMAGE_VISION_INTEGRATION_SPEC.md` وتدشين `implementation_plan.md` بالـ IDE.
+- C2 تلقي أمر "GO" الصريح من الباشمهندس زيزو وتنفيذ التعديل الجراحي المحدود في `01_syntx_chat.py`.
+- C3 إضافة دالة `upload_syntx_image` لرفع الصور إلى R2 وتمرير `"files": [{"object_type": "image", "object_url": ...}]` إلى `llm/generate`.
+- C4 دعم المعامل `--image` و `-i` في الـ CLI مع خاصية الاكتشاف التلقائي الذكي لأي صورة في المجلد المحلي.
+- C5 تحديث حزمة الاختبارات `test_syntx_chat.py` باختبار Vision واجتياز **45 من 45 اختباراً بنجاح 100%**.
+- C6 إجراء فحص تشغيلي حي بتحليل الصورة `لقطة شاشة 2026-08-22 001652.png` عبر Claude Opus 4.8 واستلام الوصف التفصيلي لواجهة المكالمة بنجاح باهر في 11 ثانية.
 
 ## Remaining
 - [x] Round 15 delivered and merged (cd7a215) — but see R99: the merge itself violated Rule 10 and the merge-audit run is red

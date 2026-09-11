@@ -28,6 +28,7 @@ import pathlib
 import argparse
 import threading
 import subprocess
+import requests
 
 # ضبط ترميز الطرفية للويندوز لدعم العربي والإيموجي
 if sys.platform == "win32":
@@ -81,9 +82,10 @@ class Config:
     # Approved accounts are supplied externally; chat never creates accounts.
     accounts_file: str = "accounts_syntx.json"
 
-    # 📂 مسارات ملفات الإدخال والإخراج
+    # 📂 مسارات ملفات الإدخال والإخراج والصور
     input_file: str = "chat_send.txt"
     output_file: str = "chat_reply.txt"
+    image_file: str | None = None
     
     # 📏 ليمت الأسطر والحروف (None = كامل بدون ليمت)
     max_lines: int | None = None
@@ -200,6 +202,44 @@ def create_syntx_chat(token: str, cfg: Config) -> str | None:
     return None
 
 
+def upload_syntx_image(image_path: pathlib.Path, token: str, cfg: Config) -> str | None:
+    """رفع الصورة لسيرفرات Syntx عبر أندبوينت upload-files واستخراج رابطها على R2 (مطابق للـ HAR مدخل 332)"""
+    if not image_path.exists():
+        print(f"{Fore.RED}⚠️ ملف الصورة غير موجود: {image_path}{Style.RESET_ALL}")
+        return None
+    ext = image_path.suffix.lower()
+    mime_map = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp"
+    }
+    content_type = mime_map.get(ext, "image/png")
+    url = f"{cfg.base_api_url}/chats/upload-files"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/plain, */*"
+    }
+    try:
+        with open(image_path, "rb") as f:
+            files = {"files": (image_path.name, f, content_type)}
+            data = {
+                "destination": "uploaded",
+                "check_duplicates": "true",
+                "model_type": ""
+            }
+            r = requests.post(url, headers=headers, files=files, data=data, timeout=30)
+        if r.status_code in [200, 201]:
+            res_json = r.json()
+            files_list = res_json.get("files", [])
+            if files_list and "url" in files_list[0]:
+                return files_list[0]["url"]
+    except Exception as e:
+        print(f"{Fore.YELLOW}⚠️ تعذر رفع الصورة ({image_path.name}): {e}{Style.RESET_ALL}")
+    return None
+
+
 # ======================================================================
 # 🚀 محرك الشات والتوليد والإحصائيات
 # ======================================================================
@@ -230,6 +270,9 @@ def print_banner(cfg: Config):
     print(f"{Fore.MAGENTA}🗄️ خزان الحسابات النشطة : {Fore.GREEN}{active_count} حساب جاهز {Fore.MAGENTA}| 🚀 التوليد بالخلفية: {Fore.CYAN}مفعّل تلقائياً (5 حسابات){Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}📂 ملف الإدخال          : {Fore.WHITE}{cfg.input_file}{Style.RESET_ALL}")
     print(f"{Fore.MAGENTA}💾 ملف الإخراج          : {Fore.WHITE}{cfg.output_file}{Style.RESET_ALL}")
+    if cfg.image_file:
+        img_name = pathlib.Path(cfg.image_file).name
+        print(f"{Fore.MAGENTA}🖼️ الصورة المرفقة       : {Fore.YELLOW}{img_name} (Vision: ON) ✅{Style.RESET_ALL}")
     print(f"{Fore.GREEN}{'─'*76}{Style.RESET_ALL}\n")
 
 
@@ -284,8 +327,24 @@ def send_syntx_message(prompt_text: str, cfg: Config, source_label: str = "مب�
     word_count = len(prompt_text.split())
     approx_tokens = int(char_count / 3.5)
 
+    target_img_url = None
+    if image_urls and len(image_urls) > 0:
+        target_img_url = image_urls[0]
+    elif cfg.image_file:
+        img_path = pathlib.Path(cfg.image_file)
+        if not img_path.is_absolute():
+            img_path = BASE_DIR / img_path
+        if img_path.exists():
+            print(f"{Fore.CYAN}🖼️ [رفع الصورة للرؤية البصرية] جاري رفع ({img_path.name})...{Style.RESET_ALL}")
+            target_img_url = upload_syntx_image(img_path, token, cfg)
+            if target_img_url:
+                print(f"{Fore.GREEN}✓ تم رفع الصورة بنجاح وتفعيل Vision!{Style.RESET_ALL}\n")
+
     print(f"{Fore.MAGENTA}┌─── 📊 إحصائيات السؤال ({source_label}) ────────────────────────┐")
     print(f"│ 🤖 الموديل     : {Fore.YELLOW}{m_info['label']} ({cfg.model}){Fore.MAGENTA}")
+    if cfg.image_file or target_img_url:
+        active_img_name = pathlib.Path(cfg.image_file).name if cfg.image_file else "مرفقة عبر الرابط"
+        print(f"│ 🖼️ الرؤية (Vision): {Fore.YELLOW}مفعّلة ON ✅ ({active_img_name}){Fore.MAGENTA}")
     print(f"│ 🧠 التفكير     : {Fore.YELLOW}{'ON (عميق)' if cfg.thinking else 'OFF'}{Fore.MAGENTA} | 📋 التخطيط: {Fore.YELLOW}{'ON' if cfg.plan else 'OFF'}{Fore.MAGENTA} | 🌐 البحث: {Fore.YELLOW}{'ON' if cfg.deep_research else 'OFF'}{Fore.MAGENTA}")
     print(f"│ 📝 عدد الحروف : {Fore.YELLOW}{char_count:,}{Fore.MAGENTA} حرف (بدون ليمت)")
     print(f"│ 📄 عدد الأسطر  : {Fore.YELLOW}{line_count:,}{Fore.MAGENTA} سطر")
@@ -313,6 +372,13 @@ def send_syntx_message(prompt_text: str, cfg: Config, source_label: str = "مب�
         "deep_research": cfg.deep_research,
         "tools": tools_list
     }
+    if target_img_url:
+        payload["files"] = [
+            {
+                "object_type": "image",
+                "object_url": target_img_url
+            }
+        ]
 
     # فحص معرفات الرسائل السابقة لتفادي التقاط رد قديم قبل وصول الرد الجديد
     pre_msg_ids = set()
@@ -344,7 +410,8 @@ def send_syntx_message(prompt_text: str, cfg: Config, source_label: str = "مب�
         if r_gen.status_code in [429, 401, 403]:
             print(f"{Fore.YELLOW}⚠️ انتهى رصيد الجلسة الحالية أو استجابة ({r_gen.status_code}). جاري حذف الحساب والانتقال للحساب التالي...{Style.RESET_ALL}")
             mark_account_expired(token, cfg)
-            return send_syntx_message(prompt_text, cfg, source_label, image_urls)
+            pass_urls = [target_img_url] if target_img_url else image_urls
+            return send_syntx_message(prompt_text, cfg, source_label, pass_urls)
 
         bot_reply = None
         if r_gen.status_code == 200:
@@ -504,6 +571,7 @@ def main():
     parser.add_argument("--count", "-c", action="store_true", help="عرض عدد الحسابات النشطة في الخزان فقط")
     parser.add_argument("--file", "-f", type=str, default=None, help="تحديد ملف الإدخال (الافتراضي chat_send.txt)")
     parser.add_argument("--output", "-o", type=str, default=None, help="تحديد ملف الإخراج (الافتراضي chat_reply.txt)")
+    parser.add_argument("--image", "-i", type=str, default=None, help="تحديد مسار صورة للرؤية البصرية (Vision)")
     parser.add_argument("--cli", action="store_true", help="بدء الشات التفاعلي فوراً")
     args = parser.parse_args()
 
@@ -540,6 +608,15 @@ def main():
         cfg.input_file = args.file
     if args.output:
         cfg.output_file = args.output
+    if args.image:
+        cfg.image_file = args.image
+    else:
+        # استكشاف تلقائي ذكي للصورة الافتراضية في المجلد
+        for auto_img in ["chat_image.png", "chat_image.jpg", "chat_image.jpeg", "chat_image.webp"]:
+            auto_path = BASE_DIR / auto_img
+            if auto_path.exists():
+                cfg.image_file = str(auto_path)
+                break
 
     # لو تم طلب عرض عدد الحسابات فقط
     if args.count:

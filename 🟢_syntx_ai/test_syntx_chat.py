@@ -178,6 +178,17 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(send.call_args.args[0], 'سؤال عربي')
         self.assertEqual(send.call_args.args[1].output_file, 'output.txt')
 
+    def test_image_dispatch_enables_vision_and_uploads(self):
+        self.write_pool([ROW])
+        test_img = self.directory / 'test.png'
+        test_img.write_bytes(b'\x89PNG\r\n\x1a\nfake')
+        with patch.object(self.chat, 'send_syntx_message') as send:
+            self.run_main('--image', str(test_img), 'اشرح الصورة')
+        send.assert_called_once()
+        prompt, cfg, label = send.call_args.args
+        self.assertEqual(prompt, 'اشرح الصورة')
+        self.assertEqual(cfg.image_file, str(test_img))
+
     def test_interactive_multiple_messages_never_call_hook(self):
         self.write_pool([ROW])
         with patch('builtins.input', side_effect=['first', 'second', 'exit']), patch.object(
