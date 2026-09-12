@@ -1,3 +1,5 @@
+https://www.genspark.ai/autopilotagent_viewer?id=24d1872e-be0a-49c2-be0f-432318b12497
+
 # 🏛️ وثيقة التكليف المعماري الموحد لمزودي البوابة: معمارية المزوّد المستقل ذاتياً (v5.5 Golden Standard)
 ## Universal Provider Architecture & Standalone Black-Box Specification
 
