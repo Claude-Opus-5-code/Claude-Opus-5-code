@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.115",
     "pydantic>=2.7",
     "uvicorn>=0.30",
+    "filelock>=3.16",  # Syntx interprocess pool transactions
     "httpx>=0.27",  # G3: live providers make real upstream calls (providers/groq)
 ]
 

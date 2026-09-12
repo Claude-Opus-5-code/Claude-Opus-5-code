@@ -1,13 +1,12 @@
-"""Hermetic Syntx provider tests — facade + Layer 1 with MockTransport only.
+"""Canonical facade tests: synthetic pool and mock transport, never real service.
 
-ZERO network. The upstream is an ``httpx.MockTransport`` installed through
-the Layer-1 test seam; credentials come from a test fixture or env sentinel.
+Replaces obsolete shared-chat/environment-token fixtures, retaining original
+success, schema, HTTP failure, missing pool, timeout and secret-safety coverage.
 """
 
-from __future__ import annotations
-
 import json
-from typing import Any
+import time
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -17,273 +16,258 @@ from gateway.contracts import (
     ErrorCategory,
     GatewayOperation,
     ProviderContext,
+    ProviderDefinition,
 )
-from providers.syntx import _upstream
-from providers.syntx._upstream import API_KEY_ENV
-from providers.syntx.adapter import HANDLERS, generate_text
-from providers.syntx.definition import DEFINITION
+from gateway.errors import RETRYABLE_DEFAULTS
+from providers.syntx import DEFINITION, HANDLERS, _upstream
+from providers.syntx._accounts import AccountPool
+from providers.syntx._config import ProviderConfig
+from providers.syntx._transport import UpstreamFailure
+from providers.syntx.adapter import analyze_vision, generate_text
 
-FAKE_KEY = "syntx_test_token_sentinel_never_real"
-FAKE_CHAT_UUID = "07d713b3-d876-465e-8d8c-970ec1ef3cdb"
+PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1cAAAAASUVORK5CYII="
+FAKE_KEY = "sentinel_credential_never_real"
 
 
-@pytest.fixture(autouse=True)
-def _fake_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(API_KEY_ENV, FAKE_KEY)
-    monkeypatch.setenv("GW_SYNTX_CHAT_UUID", FAKE_CHAT_UUID)
+def context(payload=None, operation=GatewayOperation.GENERATE_TEXT, **overrides):
+    data = dict(
+        operation=operation,
+        model="grok-4.6",
+        request_id="req",
+        tenant_id="tenant",
+        credential_mode=CredentialMode.PLATFORM,
+        timeout_ms=500,
+        payload={"messages": [{"role": "user", "content": "hi"}]} if payload is None else payload,
+    )
+    return ProviderContext(**(data | overrides))
 
 
 @pytest.fixture
-def recorder() -> list[httpx.Request]:
-    return []
+async def install(tmp_path, monkeypatch):
+    cfg = ProviderConfig(state_dir=tmp_path, poll_interval=0.001, maintenance_enabled=False)
+    pool = AccountPool(cfg)
+    await pool.add_authorized([{"token": FAKE_KEY, "status": "active"}], time.monotonic() + 1)
+    real_generate = _upstream.generate
 
-
-def _install(
-    monkeypatch: pytest.MonkeyPatch,
-    responder: Any,
-    log: list[httpx.Request],
-) -> None:
-    def _handler(request: httpx.Request) -> httpx.Response:
-        log.append(request)
-        return responder(request)
-
-    monkeypatch.setattr(_upstream, "_default_transport", httpx.MockTransport(_handler))
-
-
-def _context(
-    payload: dict[str, Any] | None = None,
-    model: str = "claude-opus-4-8",
-) -> ProviderContext:
-    return ProviderContext(
-        operation=GatewayOperation.GENERATE_TEXT,
-        model=model,
-        request_id="req_syntx_1",
-        tenant_id="ten_syntx_1",
-        credential_mode=CredentialMode.PLATFORM,
-        credential_value=None,
-        payload=(
-            {"messages": [{"role": "user", "content": "Hello Syntx!"}]}
-            if payload is None
-            else payload
-        ),
-        timeout_ms=5000,
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Tests                                                                       #
-# --------------------------------------------------------------------------- #
-
-
-def test_definition_parity_with_handlers() -> None:
-    ops = set(DEFINITION["operations"])  # type: ignore[arg-type]
-    handler_ops = {op.value for op in HANDLERS}
-    assert ops == handler_ops
-
-
-def test_definition_honesty() -> None:
-    assert DEFINITION["health_supported"] is False
-    assert DEFINITION["credential_mode"] == "platform"
-    models = DEFINITION["models"]
-    assert isinstance(models, list)
-    model_names = {m["name"] for m in models}
-    assert "claude-opus-4-8" in model_names
-    assert "gpt-5.6-terra" in model_names
-    assert "claude-sonnet-5" in model_names
-    assert "grok-4.6" in model_names
-
-
-@pytest.mark.asyncio
-async def test_schema_rejects_extra_keys() -> None:
-    ctx = _context(
-        payload={
-            "messages": [{"role": "user", "content": "hi"}],
-            "unexpected_extra_key": "bad",
-        }
-    )
-    result = await generate_text(ctx)
-    assert not result.succeeded
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.BAD_REQUEST
-
-
-@pytest.mark.asyncio
-async def test_schema_rejects_empty_messages() -> None:
-    ctx = _context(payload={"messages": []})
-    result = await generate_text(ctx)
-    assert not result.succeeded
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.BAD_REQUEST
-
-
-@pytest.mark.asyncio
-async def test_canonical_success_shape(
-    monkeypatch: pytest.MonkeyPatch,
-    recorder: list[httpx.Request],
-) -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
-        url_str = str(request.url)
-        if "/llm/generate" in url_str:
-            return httpx.Response(
-                200,
-                json={
-                    "job_id": "eda974de-2543-4279-9732-6e13d9488273",
-                    "stream_url": "https://sse.syntx.ai/stream/test",
-                },
+    def use(responder):
+        async def call(**kwargs):
+            return await real_generate(
+                **kwargs, config=cfg, pool=pool, transport=httpx.MockTransport(responder)
             )
-        if "/messages" in url_str:
-            return httpx.Response(
-                200,
-                json={
-                    "messages": [
-                        {
-                            "author_id": -1,
-                            "role": "assistant",
-                            "message_object": [
-                                {
-                                    "object_type": "text",
-                                    "object_text": "Hello, I am Claude Opus 4.8 on Syntx!",
-                                    "completed": True,
-                                }
-                            ],
-                        }
-                    ]
-                },
-            )
-        return httpx.Response(404)
 
-    # Use fast poll for hermetic tests
-    monkeypatch.setattr(_upstream, "_poll_messages", lambda client, chat_uuid, headers, timeout_seconds: _mock_fast_poll())
-    async def _mock_fast_poll() -> str:
-        return "Hello, I am Claude Opus 4.8 on Syntx!"
+        monkeypatch.setattr(_upstream, "generate", call)
 
-    _install(monkeypatch, responder, recorder)
-
-    result = await generate_text(_context())
-    assert result.succeeded is True
-    assert result.output is not None
-    assert result.output["text"] == "Hello, I am Claude Opus 4.8 on Syntx!"
-    assert result.output["finish_reason"] == "stop"
-    assert result.usage is not None
-    assert result.usage.units == 1
-    assert result.error is None
+    return use, pool
 
 
-@pytest.mark.asyncio
-async def test_upstream_429_rate_limited(
-    monkeypatch: pytest.MonkeyPatch,
-    recorder: list[httpx.Request],
-) -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
+def test_definition_parity_and_honesty():
+    parsed = ProviderDefinition.model_validate(DEFINITION)
+    assert {op.value for op in HANDLERS} == set(DEFINITION["operations"])
+    assert set(DEFINITION["operations"]) == {"generate_text", "analyze_vision"}
+    assert parsed.credential_mode is CredentialMode.PLATFORM
+    assert parsed.capabilities["vision_input"] is True
+    assert parsed.health_supported is False
+    assert {m.name for m in parsed.models} == {
+        "gpt-5.6-terra",
+        "claude-opus-4-8",
+        "claude-sonnet-5",
+        "grok-4.6",
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"messages": []},
+        {"messages": "bad"},
+        {"messages": [None]},
+        {"messages": [{"role": "user", "content": []}]},
+        {"messages": [{"role": "user", "content": "x", "extra": True}]},
+        {"messages": [{"role": "user", "content": "x"}], "files": []},
+        {"messages": [{"role": "user", "content": "x"}], "temperature": True},
+        {"messages": [{"role": "user", "content": "x"}], "temperature": float("nan")},
+        {"messages": [{"role": "user", "content": "x"}], "max_tokens": "20"},
+    ],
+)
+async def test_bad_schema_does_not_call_upstream(payload, monkeypatch):
+    async def forbidden(**kwargs):
+        pytest.fail("upstream must not run for invalid payload")
+
+    monkeypatch.setattr(_upstream, "generate", forbidden)
+    result = await generate_text(context(payload))
+    assert result.error.category is ErrorCategory.BAD_REQUEST
+
+
+async def test_success_preserves_history_once_and_ignores_unsupported_controls(install):
+    use, _ = install
+    prompt = []
+
+    def respond(request):
+        if request.url.path.endswith("/chats"):
+            return httpx.Response(201, json={"uuid": str(uuid4())})
+        if request.url.path.endswith("/generate"):
+            data = json.loads(request.content)
+            prompt.append(data["text"])
+            assert "temperature" not in data and "max_tokens" not in data
+            return httpx.Response(200, json={"job_id": "job"})
         return httpx.Response(
-            429,
+            200,
             json={
-                "detail": {
-                    "code": "chat.text.rateLimitExceeded",
-                    "retry_after_seconds": 21526,
-                    "error": "rate_limit_exceeded",
-                }
+                "messages": [
+                    {
+                        "author_id": -1,
+                        "usage": {"input_tokens": 5, "output_tokens": 8},
+                        "message_object": [
+                            {"object_type": "text", "object_text": "answer", "completed": True}
+                        ],
+                    }
+                ]
             },
         )
 
-    _install(monkeypatch, responder, recorder)
-
-    result = await generate_text(_context())
-    assert result.succeeded is False
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.RATE_LIMITED
-    assert result.error.retryable is True
-    assert result.error.retry_after_ms == 21526000
-
-
-@pytest.mark.asyncio
-async def test_upstream_401_invalid_credential(
-    monkeypatch: pytest.MonkeyPatch,
-    recorder: list[httpx.Request],
-) -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(401, json={"detail": "Unauthorized token"})
-
-    _install(monkeypatch, responder, recorder)
-
-    result = await generate_text(_context())
-    assert result.succeeded is False
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.INVALID_CREDENTIAL
+    use(respond)
+    result = await generate_text(
+        context(
+            {
+                "messages": [
+                    {"role": "system", "content": "instruction"},
+                    {"role": "assistant", "content": "earlier"},
+                    {"role": "user", "content": "latest"},
+                ],
+                "temperature": 0.5,
+                "max_tokens": 50,
+            }
+        )
+    )
+    assert result.succeeded and result.output == {"text": "answer", "finish_reason": "stop"}
+    assert result.usage.input_tokens == 5 and result.usage.output_tokens == 8
+    assert result.usage.units == 1
+    assert prompt == [
+        "Previous conversation:\nsystem: instruction\n\nassistant: earlier\n\n"
+        "Current request:\nuser: latest"
+    ]
 
 
-@pytest.mark.asyncio
-async def test_upstream_404_model_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-    recorder: list[httpx.Request],
-) -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(404, json={"detail": "Model not found"})
+async def test_vision_canonical_output(install):
+    use, _ = install
 
-    _install(monkeypatch, responder, recorder)
+    def respond(request):
+        if request.url.path.endswith("/chats"):
+            return httpx.Response(201, json={"uuid": str(uuid4())})
+        if request.url.path.endswith("/upload-files"):
+            return httpx.Response(
+                200, json={"files": [{"url": "https://assets.example.invalid/i.png"}]}
+            )
+        if request.url.path.endswith("/generate"):
+            assert json.loads(request.content)["files"][0]["object_type"] == "image"
+            return httpx.Response(200, json={"job_id": "job"})
+        return httpx.Response(
+            200,
+            json={
+                "messages": [
+                    {
+                        "author_id": -1,
+                        "message_object": [
+                            {"object_type": "text", "completed": True, "object_text": "a pixel"}
+                        ],
+                    }
+                ]
+            },
+        )
 
-    result = await generate_text(_context())
-    assert result.succeeded is False
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.MODEL_UNAVAILABLE
-
-
-@pytest.mark.asyncio
-async def test_upstream_500_retryable_server_error(
-    monkeypatch: pytest.MonkeyPatch,
-    recorder: list[httpx.Request],
-) -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="Internal Server Error")
-
-    _install(monkeypatch, responder, recorder)
-
-    result = await generate_text(_context())
-    assert result.succeeded is False
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.RETRYABLE_SERVER_ERROR
-
-
-@pytest.mark.asyncio
-async def test_pool_exhausted_provider_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv(API_KEY_ENV, raising=False)
-    monkeypatch.setenv("GW_SYNTX_ACCOUNTS_FILE", "non_existent_empty_pool.json")
-
-    result = await generate_text(_context())
-    assert result.succeeded is False
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.PROVIDER_UNAVAILABLE
+    use(respond)
+    result = await analyze_vision(
+        context(
+            {"image_b64": PNG, "image_format": "png", "instruction": "describe"},
+            operation=GatewayOperation.ANALYZE_VISION,
+        )
+    )
+    assert result.output == {"text": "a pixel"}
+    assert result.usage.input_tokens is result.usage.output_tokens is None
 
 
-@pytest.mark.asyncio
-async def test_timeout_translated(
-    monkeypatch: pytest.MonkeyPatch,
-    recorder: list[httpx.Request],
-) -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadTimeout("Mocked read timeout")
+@pytest.mark.parametrize(
+    "status,kind",
+    [
+        (401, ErrorCategory.INVALID_CREDENTIAL),
+        (403, ErrorCategory.INVALID_CREDENTIAL),
+        (404, ErrorCategory.MODEL_UNAVAILABLE),
+        (429, ErrorCategory.RATE_LIMITED),
+        (400, ErrorCategory.BAD_REQUEST),
+        (422, ErrorCategory.BAD_REQUEST),
+        (500, ErrorCategory.RETRYABLE_SERVER_ERROR),
+        (599, ErrorCategory.RETRYABLE_SERVER_ERROR),
+    ],
+)
+async def test_http_failures_and_secret_safety(install, status, kind):
+    use, _ = install
+    use(
+        lambda request: httpx.Response(
+            status,
+            json={
+                "detail": {
+                    "message": f"secret={FAKE_KEY} /private/path https://private.invalid",
+                    "retry_after_seconds": 21526,
+                }
+            },
+        )
+    )
+    result = await generate_text(context())
+    assert not result.succeeded and result.error.category is kind
+    assert result.output is result.usage is None
+    assert FAKE_KEY not in result.model_dump_json()
+    assert "/private" not in result.model_dump_json()
+    if status == 429:
+        assert result.error.retry_after_ms == 21526000
 
-    _install(monkeypatch, responder, recorder)
 
-    result = await generate_text(_context())
-    assert result.succeeded is False
-    assert result.error is not None
-    assert result.error.category == ErrorCategory.TIMEOUT
+@pytest.mark.parametrize("category", list(ErrorCategory))
+async def test_all_twelve_categories_cross_facade_with_contract_retryability(monkeypatch, category):
+    async def fail(**kwargs):
+        raise UpstreamFailure(category.value, retry_after_ms=1000)
+
+    monkeypatch.setattr(_upstream, "generate", fail)
+    result = await generate_text(context())
+    assert result.error.category is category
+    assert result.error.retryable is RETRYABLE_DEFAULTS[category]
+    assert result.error.retry_after_ms == (1000 if category is ErrorCategory.RATE_LIMITED else None)
 
 
-@pytest.mark.asyncio
-async def test_no_secret_leak(
-    monkeypatch: pytest.MonkeyPatch,
-    recorder: list[httpx.Request],
-) -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(401, json={"detail": f"Token {FAKE_KEY} was revoked"})
+async def test_empty_pool_is_unavailable(install):
+    use, pool = install
+    pool.config.accounts_file.unlink()
+    use(lambda request: pytest.fail("empty pool must not call upstream"))
+    assert (await generate_text(context())).error.category is ErrorCategory.PROVIDER_UNAVAILABLE
 
-    _install(monkeypatch, responder, recorder)
 
-    result = await generate_text(_context())
-    assert result.error is not None
-    assert FAKE_KEY not in (result.error.message or "")
-    assert FAKE_KEY not in (result.error.provider_code or "")
+async def test_timeout(install):
+    use, _ = install
+
+    def respond(request):
+        raise httpx.ReadTimeout("secret private url")
+
+    use(respond)
+    assert (await generate_text(context())).error.category is ErrorCategory.TIMEOUT
+
+
+async def test_unexpected_exception_is_safe(monkeypatch):
+    async def fail(**kwargs):
+        raise RuntimeError(FAKE_KEY)
+
+    monkeypatch.setattr(_upstream, "generate", fail)
+    result = await generate_text(context())
+    assert result.error.category is ErrorCategory.NON_RETRYABLE_ERROR
+    assert FAKE_KEY not in result.model_dump_json()
+
+
+async def test_wrong_operation_is_unsupported():
+    result = await generate_text(context(operation=GatewayOperation.GENERATE_IMAGE))
+    assert result.error.category is ErrorCategory.UNSUPPORTED_CAPABILITY
+
+
+async def test_caller_credentials_are_not_used():
+    result = await generate_text(
+        context(credential_mode=CredentialMode.USER_KEY, credential_value=FAKE_KEY)
+    )
+    assert result.error.category is ErrorCategory.INVALID_CREDENTIAL
