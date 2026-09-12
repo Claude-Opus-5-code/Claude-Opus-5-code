@@ -18,8 +18,59 @@ from ._config import ProviderConfig
 from ._privacy import private_diagnostics
 from ._transport import Deadline, Transport, UpstreamFailure
 
+import sys
+
 _active: dict[Path, asyncio.Task] = {}
 _last_start: dict[Path, float] = {}
+_queue_pending: int = 0
+_queue_worker_task: asyncio.Task | None = None
+
+
+async def _serial_queue_worker(config: ProviderConfig, pool: AccountPool):
+    """Zizo FIFO Task Queue: Creates accounts sequentially until the cumulative queue is drained."""
+    global _queue_pending
+    script = config.state_dir / "_register.py"
+    if not script.exists():
+        _queue_pending = 0
+        return
+
+    while _queue_pending > 0:
+        batch = min(5, _queue_pending)
+        _queue_pending -= batch
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                str(script),
+                "--max",
+                str(batch),
+                "--no-loop",
+                "--file",
+                str(config.incoming_accounts_file),
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+            deadline = Deadline.after_ms(15_000)
+            await pool.merge_pending(deadline.end)
+        except Exception:
+            pass
+
+
+def enqueue_account_replenishment(config: ProviderConfig, pool: AccountPool, count: int = 5):
+    """Enqueue account creation and ensure single serial background worker is active."""
+    global _queue_pending, _queue_worker_task
+    script = config.state_dir / "_register.py"
+    if not script.exists() or not config.maintenance_enabled:
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    _queue_pending = min(30, _queue_pending + count)
+    if _queue_worker_task is None or _queue_worker_task.done():
+        _queue_worker_task = loop.create_task(_serial_queue_worker(config, pool))
 
 
 async def _run(
@@ -85,6 +136,7 @@ def _trigger_maintenance(
     """
     if not config.maintenance_enabled:
         return None
+    enqueue_account_replenishment(config, pool or AccountPool(config), count=5)
     path = config.maintenance_lock_file.resolve()
     now = time.monotonic()
     if path in _active or now - _last_start.get(path, float("-inf")) < config.maintenance_interval:
