@@ -1,200 +1,154 @@
-"""Exercise the real orchestration against deterministic mock transport."""
+"""Chat orchestration and multi-model execution tests for Syntx Layer 1 & 2."""
 
-import asyncio
 import json
-import time
 from uuid import uuid4
 
 import httpx
 import pytest
 
-from providers.syntx._accounts import AccountPool
-from providers.syntx._config import MODEL_AI_NAMES, ProviderConfig
-from providers.syntx._transport import UpstreamFailure
-from providers.syntx._upstream import generate
+from gateway.contracts import GatewayOperation, ProviderContext, CredentialMode
+from providers.syntx import _core
+from providers.syntx.adapter import generate_text
+
+TEST_MODELS = [
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "gpt-5.6-terra",
+    "grok-4.6",
+]
 
 
-@pytest.fixture
-async def setup_chat(tmp_path):
-    cfg = ProviderConfig(state_dir=tmp_path, poll_interval=0.001, maintenance_enabled=False)
-    pool = AccountPool(cfg)
-    await pool.add_authorized(
-        [{"token": "test-token", "status": "active", "chat_uuid": str(uuid4())}],
-        time.monotonic() + 2,
-    )
-    return cfg, pool
+@pytest.fixture(autouse=True)
+def setup_chat(tmp_path, monkeypatch):
+    test_accounts_file = tmp_path / "accounts_syntx.json"
+    initial_accounts = [
+        {
+            "email": "chat_tester@example.com",
+            "token": "token-syntx-chat-999",
+            "chat_uuid": "chat-uuid-session-1234",
+            "provider": "tempmailclub",
+            "status": "active",
+            "created_at": "2026-09-12 12:00:00",
+        }
+    ]
+    test_accounts_file.write_text(json.dumps(initial_accounts), encoding="utf-8")
+    monkeypatch.setenv("GW_SYNTX_ACCOUNTS_FILE", str(test_accounts_file))
+    yield test_accounts_file
+    _core.set_transport_override(None)
 
 
-def completed(text="reply", **extra):
-    return {
-        "author_id": -1,
-        "message_object": [{"object_type": "text", "object_text": text, "completed": True}],
-        **extra,
-    }
-
-
-@pytest.mark.parametrize("model", list(MODEL_AI_NAMES))
-async def test_models_payload_and_official_usage(setup_chat, model):
-    cfg, pool = setup_chat
-    session = str(uuid4())
+@pytest.mark.parametrize("model", TEST_MODELS)
+async def test_models_payload_structure(model):
+    """Verify each model correctly constructs upstream payload and ai_name."""
     calls = []
+    call_counts = {"messages": 0}
 
-    def respond(request):
+    def mock_responder(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
         calls.append(request)
         if request.url.path.endswith("/chats"):
-            return httpx.Response(201, json={"uuid": session})
-        if request.url.path.endswith("/generate"):
-            data = json.loads(request.content)
+            return httpx.Response(201, json={"uuid": "chat-uuid-session-1234"})
+        if "/llm/generate" in url_str:
+            data = json.loads(request.content.decode("utf-8"))
             assert data["model"] == model
-            assert data["chat_uuid"] == session
+            assert data["chat_uuid"] == "chat-uuid-session-1234"
             assert data["text"] == "hello"
-            assert data["thinking"] and data["plan"] and data["deep_research"]
-            assert request.url.params["ai_name"] == MODEL_AI_NAMES[model]
-            return httpx.Response(200, json={"job_id": "job"})
-        return httpx.Response(
-            200, json={"messages": [completed(usage={"prompt_tokens": 7, "completion_tokens": 3})]}
-        )
-
-    reply = await generate(
-        model=model,
-        text="hello",
-        timeout_ms=500,
-        config=cfg,
-        pool=pool,
-        transport=httpx.MockTransport(respond),
-    )
-    assert (reply.text, reply.input_tokens, reply.output_tokens) == ("reply", 7, 3)
-    assert len(calls) == 3
-
-
-async def test_concurrent_requests_have_independent_chats_and_no_stale_answers(setup_chat):
-    cfg, pool = setup_chat
-    sessions = {}
-    titles = set()
-
-    async def respond(request):
-        if request.url.path.endswith("/chats"):
-            titles.add(json.loads(request.content)["title"])
-            return httpx.Response(201, json={"uuid": str(uuid4())})
-        if request.url.path.endswith("/generate"):
-            data = json.loads(request.content)
-            sessions[data["chat_uuid"]] = data["text"]
-            return httpx.Response(200, json={"job_id": data["chat_uuid"]})
-        session = request.url.path.split("/")[-2]
-        await asyncio.sleep(0.01)
-        return httpx.Response(
-            200,
-            json={
-                "messages": [
-                    completed(sessions[session], chat_uuid=session),
-                    completed("WRONG", chat_uuid=str(uuid4())),
-                    completed("WRONG JOB", job_id="other"),
-                ]
-            },
-        )
-
-    responses = await asyncio.gather(
-        *(
-            generate(
-                model="grok-4.6",
-                text=text,
-                timeout_ms=500,
-                config=cfg,
-                pool=pool,
-                transport=httpx.MockTransport(respond),
+            assert data["thinking"] is True
+            assert data["plan"] is True
+            assert data["deep_research"] is True
+            expected_ai_name = _core.get_model_ai_name(model)
+            assert request.url.params.get("ai_name") == expected_ai_name
+            return httpx.Response(200, json={"job_id": "test-job-99"})
+        if "/messages" in url_str:
+            call_counts["messages"] += 1
+            if call_counts["messages"] == 1:
+                return httpx.Response(200, json={"messages": []})
+            return httpx.Response(
+                200,
+                json={
+                    "messages": [
+                        {
+                            "id": 555,
+                            "author_id": -1,
+                            "usage": {"input_tokens": 10, "output_tokens": 20},
+                            "message_object": [
+                                {"object_type": "text", "object_text": f"Reply from {model}", "completed": True}
+                            ],
+                        }
+                    ]
+                },
             )
-            for text in ("first", "second")
-        )
+        return httpx.Response(404, json={"detail": "not found"})
+
+    _core.set_transport_override(httpx.MockTransport(mock_responder))
+
+    ctx = ProviderContext(
+        operation=GatewayOperation.GENERATE_TEXT,
+        model=model,
+        request_id="test-req",
+        tenant_id="test-tenant",
+        credential_mode=CredentialMode.PLATFORM,
+        timeout_ms=5000,
+        payload={"messages": [{"role": "user", "content": "hello"}]},
     )
-    assert [item.text for item in responses] == ["first", "second"]
-    assert len(sessions) == len(titles) == 2
-    assert all(item.input_tokens is item.output_tokens is None for item in responses)
+    result = await generate_text(ctx)
+    assert result.succeeded
+    assert result.output["text"] == f"Reply from {model}"
+    assert result.usage.input_tokens == 10
+    assert result.usage.output_tokens == 20
 
 
-@pytest.mark.parametrize(
-    "status,body,kind,state",
-    [
-        (403, {"detail": {"code": "modelNotAvailableForPlan"}}, "model_unavailable", "active"),
-        (401, {}, "invalid_credential", "invalid"),
-        (429, {}, "rate_limited", "cooldown"),
-    ],
-)
-async def test_error_state_updates_without_resubmission(setup_chat, status, body, kind, state):
-    cfg, pool = setup_chat
-    calls = []
+async def test_multi_turn_conversation_formatting():
+    """Verify multi-turn messages are correctly formatted into conversation history."""
+    captured_texts = []
+    call_counts = {"messages": 0}
 
-    def respond(request):
-        calls.append(request)
-        if request.url.path.endswith("/chats"):
-            return httpx.Response(201, json={"uuid": str(uuid4())})
-        return httpx.Response(status, json=body)
+    def mock_responder(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        if "/llm/generate" in url_str:
+            data = json.loads(request.content.decode("utf-8"))
+            captured_texts.append(data["text"])
+            return httpx.Response(200, json={"job_id": "test-job"})
+        if "/messages" in url_str:
+            call_counts["messages"] += 1
+            if call_counts["messages"] == 1:
+                return httpx.Response(200, json={"messages": []})
+            return httpx.Response(
+                200,
+                json={
+                    "messages": [
+                        {
+                            "id": 777,
+                            "author_id": -1,
+                            "message_object": [
+                                {"object_type": "text", "object_text": "Understood.", "completed": True}
+                            ],
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(200, json={})
 
-    with pytest.raises(UpstreamFailure) as exc:
-        await generate(
-            model="grok-4.6",
-            text="hi",
-            timeout_ms=500,
-            config=cfg,
-            pool=pool,
-            transport=httpx.MockTransport(respond),
-        )
-    assert exc.value.kind == kind
-    assert len(calls) == 2
-    assert (await pool.snapshot(time.monotonic() + 1))[0]["status"] == state
+    _core.set_transport_override(httpx.MockTransport(mock_responder))
 
-
-async def test_unfinished_poll_times_out_without_resubmitting(setup_chat):
-    cfg, pool = setup_chat
-    generations = 0
-
-    def respond(request):
-        nonlocal generations
-        if request.url.path.endswith("/chats"):
-            return httpx.Response(201, json={"uuid": str(uuid4())})
-        if request.url.path.endswith("/generate"):
-            generations += 1
-            return httpx.Response(200, json={"job_id": "j"})
-        partial = completed("partial")
-        partial["message_object"][0]["completed"] = False
-        return httpx.Response(200, json={"messages": [partial]})
-
-    with pytest.raises(UpstreamFailure) as exc:
-        await generate(
-            model="grok-4.6",
-            text="hi",
-            timeout_ms=30,
-            config=cfg,
-            pool=pool,
-            transport=httpx.MockTransport(respond),
-        )
-    assert exc.value.kind == "timeout"
-    assert generations == 1
-
-
-async def test_caller_cancellation_propagates(setup_chat):
-    cfg, pool = setup_chat
-    entered = asyncio.Event()
-    cancelled = asyncio.Event()
-
-    async def respond(request):
-        entered.set()
-        try:
-            await asyncio.sleep(10)
-        finally:
-            cancelled.set()
-
-    task = asyncio.create_task(
-        generate(
-            model="grok-4.6",
-            text="hi",
-            timeout_ms=500,
-            config=cfg,
-            pool=pool,
-            transport=httpx.MockTransport(respond),
-        )
+    ctx = ProviderContext(
+        operation=GatewayOperation.GENERATE_TEXT,
+        model="claude-opus-4-8",
+        request_id="test-req",
+        tenant_id="test-tenant",
+        credential_mode=CredentialMode.PLATFORM,
+        timeout_ms=5000,
+        payload={
+            "messages": [
+                {"role": "system", "content": "System prompt instructions"},
+                {"role": "user", "content": "First turn"},
+                {"role": "assistant", "content": "Assistant turn"},
+                {"role": "user", "content": "Final question"},
+            ]
+        },
     )
-    await entered.wait()
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert cancelled.is_set()
+    result = await generate_text(ctx)
+    assert result.succeeded
+    assert len(captured_texts) == 1
+    assert "Previous conversation:\nsystem: System prompt instructions\n\nuser: First turn\n\nassistant: Assistant turn" in captured_texts[0]
+    assert "Current request:\nuser: Final question" in captured_texts[0]

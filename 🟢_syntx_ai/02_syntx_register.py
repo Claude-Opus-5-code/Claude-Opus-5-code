@@ -78,8 +78,14 @@ DEFAULT_PROVIDER: str = "tempmailclub"  # المزود الافتراضي (Temp-
 
 EMAIL_PROVIDERS: List[str] = ["tempmailclub"]
 
-# قفل التزامن لمنع تصادم العمليات على الملف
-_file_lock = threading.Lock()
+try:
+    from filelock import FileLock, Timeout
+except ImportError:
+    FileLock = None
+    Timeout = None
+
+# قفل التزامن لمنع تصادم العمليات على الملف عبر البروسيسات المتعددة
+_thread_lock = threading.Lock()
 
 
 # ======================================================================
@@ -285,8 +291,10 @@ class TempMailClubProvider:
 # ======================================================================
 
 def load_accounts_pool(cfg: Config) -> List[Dict[str, Any]]:
-    """قراءة قاعدة بيانات الحسابات مع حماية من الأخطاء"""
-    with _file_lock:
+    """قراءة قاعدة بيانات الحسابات مع حماية من الأخطاء بقفل FileLock المشترك"""
+    lock_file = f"{cfg.accounts_file}.lock"
+
+    def _read_data():
         if not os.path.exists(cfg.accounts_file):
             return []
         try:
@@ -296,23 +304,45 @@ def load_accounts_pool(cfg: Config) -> List[Dict[str, Any]]:
         except Exception:
             return []
 
+    if FileLock:
+        try:
+            with FileLock(lock_file, timeout=15):
+                return _read_data()
+        except Exception:
+            return _read_data()
+    else:
+        with _thread_lock:
+            return _read_data()
+
 
 def save_accounts_pool(accounts: List[Dict[str, Any]], cfg: Config) -> bool:
-    """حفظ قاعدة بيانات الحسابات بطريقة ذرية آمنة (Atomic Write) لمنع تلف البيانات"""
-    with _file_lock:
-        tmp_file = f"{cfg.accounts_file}.tmp"
+    """حفظ قاعدة بيانات الحسابات بطريقة ذرية آمنة (Atomic Write + FileLock) لمنع تلف البيانات"""
+    lock_file = f"{cfg.accounts_file}.lock"
+    tmp_file = f"{cfg.accounts_file}.tmp"
+
+    def _write_data():
         try:
             with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(accounts, f, indent=2, ensure_ascii=False)
             os.replace(tmp_file, cfg.accounts_file)
             return True
-        except Exception as e:
+        except Exception:
             if os.path.exists(tmp_file):
                 try:
                     os.remove(tmp_file)
                 except Exception:
                     pass
             return False
+
+    if FileLock:
+        try:
+            with FileLock(lock_file, timeout=15):
+                return _write_data()
+        except Exception:
+            return False
+    else:
+        with _thread_lock:
+            return _write_data()
 
 
 def add_account_to_pool(email: str, token: str, provider: str, chat_uuid: Optional[str], cfg: Config) -> bool:
