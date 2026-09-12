@@ -8,3 +8,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.egg-info/
+
+# Private Syntx runtime state
+**/accounts_syntx.json
+**/accounts_new.json
+__gateway-service/providers/syntx/*.lock
+__gateway-service/providers/syntx/*.tmp
+__gateway-service/providers/syntx/.accounts_*.tmp
