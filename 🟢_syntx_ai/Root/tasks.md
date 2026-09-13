@@ -521,3 +521,14 @@
   - [x] 6. اجتياز 171/171 من اختبارات الـ Gateway كاملة خضراء (`171 passed in 1.42s`).
   - [x] 7. تفريغ وتوثيق فويس 97 وفويس 98 في `Root/VOICE_LOG.md` وتحديث سجلات النواة المركزية (`PROGRESS.md`, `memory.md`, `tasks.md`, `ai_state.json`).
 
+### 🟢 محطة وثيقة التكليف الرسمية وترقية المولد الآلي v3.1 (External Handover & Zero Dead Code):
+- [x] **[TASK-HANDOVER-MANDATE-AND-SCAFFOLDER-V3.1] إطلاق وثيقة الوكيل وترقية المولد الآلي:**
+  - [x] 1. استيعاب توجيهات البروفيسور زيزو في فويس 99 وفويس 100 وتفريغهما في `Root/VOICE_LOG.md`.
+  - [x] 2. تدشين وثيقة التسليم والتكليف الجاهزة للنسخ `EXTERNAL_AGENT_MANDATE_V3.md` في `Root/` و `__gateway-service/docs/`.
+  - [x] 3. ترقية `__gateway-service/tools/har_to_provider.py` للقضاء على الكود الميت وتوليد `_core.py` إنتاجي حي 100%.
+  - [x] 4. دمج محرك `TempMailClubClient` وقراءة الـ OTP بالـ Regex من DOM Morphing والحذف الذري `delete_email()` في الكود المتولد.
+  - [x] 5. استبعاد متتبعات التحليلات واستخراج الـ API Origin الحقيقي للمزود بنجاح.
+  - [x] 6. اجتياز 171/171 من اختبارات البوابة الهرمتيكية بنسبة 100% خضراء (`171 passed in 1.39s`).
+  - [x] 7. تحديث بوصلة الحالة وسجلات الروت كاملة والرفع السحابي على GitHub.
+
+
