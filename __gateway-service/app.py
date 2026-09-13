@@ -50,9 +50,11 @@ def register_live_providers(registry: ProviderRegistry) -> None:
 
     from providers.groq.definition import DEFINITION as GROQ_DEFINITION
     from providers.syntx.definition import DEFINITION as SYNTX_DEFINITION
+    from providers.deepai.definition import DEFINITION as DEEPAI_DEFINITION
 
     registry.register("groq", GROQ_DEFINITION, "providers.groq.adapter")
     registry.register("syntx", SYNTX_DEFINITION, "providers.syntx.adapter")
+    registry.register("deepai", DEEPAI_DEFINITION, "providers.deepai.adapter")
 
 
 if __name__ == "__main__":  # pragma: no cover
