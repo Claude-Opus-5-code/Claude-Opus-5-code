@@ -4,7 +4,7 @@
 > **القيادة الهندسية العليا:** الباشمهندس زيزو (Product Visionary) & المهندس بولا (Lead Architect)  
 > **الجهة المنفذة محلياً:** الأيجنت فلاش (Flash @ Antigravity IDE)  
 > **المستودع الرسمي:** `https://github.com/Claude-Opus-5-code/Claude-Opus-5-code.git`  
-> **الفرع المعتمد حصراً:** `genspark_ai_developer` (Commit: `2cb31a8`)  
+> **الفرع المعتمد حصراً:** `genspark_ai_developer` (Latest Commit: `c521c19`)  
 > **مجلد عمل الوكيل المعزول:** `genspark/` (في الروت بجوار `__gateway-service/` و `🟢_syntx_ai/`)  
 > **الدستور الحاكم:** دستور بولا الهندسي v1.2 & عقد البوابة ADR-0008  
 
@@ -40,7 +40,7 @@
 | **`__gateway-service/providers/syntx/`** | **المزود المرجعي القياسي المكتمل (Canonical Reference)**: مبني بنمط الـ 4 ملفات النظيفة (`__init__.py`, `definition.py`, `_core.py`, `adapter.py`) + `models_metadata.json` + خزان 37 حساباً نشطاً. |
 | **`__gateway-service/docs/`** | **ثلاثية الماستر بلوبرنت**: <br>• `UNIVERSAL_PROVIDER_SPEC_AND_BLUEPRINT.md` (v1.0 مع بولا)<br>• `UNIVERSAL_PROVIDER_SPEC_AND_BLUEPRINT_V2.md` (v2.0 التغذية الاستباقية، جلسات البريد، تفريغ الصوت، مثلث الاختبارات)<br>• `UNIVERSAL_PROVIDER_SPEC_AND_BLUEPRINT_V3.md` (v3.0 معيار الـ 15 دقيقة والتوليد الآلي). |
 | **`__gateway-service/tools/har_to_provider.py`** | **أداة التوليد الآلي الصاروخي** التي تفلتر ملفات الـ HAR وتستخرج الموديلات وتولد المزود الإنتاجي في أقل من 30 ثانية. |
-| **`🟢_syntx_ai/Root/`** | **النواة السداسية للذاكرة التشغيلية**: `VOICE_LOG.md` (تفريغ 102 فويس لزيزو وبولا)، `PROGRESS.md`، `tasks.md`، `memory.md`، `ai_state.json`. |
+| **`🟢_syntx_ai/Root/`** | **النواة السداسية للذاكرة التشغيلية**: `VOICE_LOG.md` (تفريغ 103 فويسات لزيزو وبولا)، `PROGRESS.md`، `tasks.md`، `memory.md`، `ai_state.json`. |
 | **`🟢_syntx_ai/har/`** | **سجلات الشبكة الحية الخام (Ground Truth HAR)** المسحوبة حياً من المتصفح (`syntx.ai....1....har` و `syntx.ai....2....har`). |
 
 ---
@@ -62,7 +62,7 @@
 
 ## 🎯 4. التكليف الهندسي المطلوب منك في هذه الجلسة (Your Exact Mission)
 
-بناءً على توجيهات البروفيسور زيزو (فويس 97 إلى 102):
+بناءً على توجيهات البروفيسور زيزو (فويس 97 إلى 103):
 
 ### 📁 الخطوة 0 (إلزامية قبل أي رد أو كود):
 - أنشئ مجلدك المعزول **`genspark/`** في الروت.
