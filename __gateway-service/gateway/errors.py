@@ -69,3 +69,33 @@ def internal_fault() -> GatewayError:
         "gateway internal fault",
         provider_code=None,
     )
+
+
+def classify_http_status(status: int, body: str = "") -> ErrorCategory:
+    """Canonical HTTP status to ErrorCategory mapper.
+
+    Translates upstream HTTP response status and optional body diagnostics
+    into one of the 12 canonical ErrorCategory values defined in ADR-0008.
+    """
+    low = (body or "").lower()
+    if status in (401, 403):
+        if "captcha" in low or "cloudflare" in low or "attention required" in low or "turnstile" in low:
+            return ErrorCategory.PROVIDER_UNAVAILABLE
+        if "invalid" in low or "wrong" in low or "bad credentials" in low:
+            return ErrorCategory.INVALID_CREDENTIAL
+        return ErrorCategory.AUTH_EXPIRED
+    if status == 429:
+        return ErrorCategory.QUOTA_EXCEEDED if ("quota" in low or "credit" in low or "balance" in low) else ErrorCategory.RATE_LIMITED
+    if status == 404:
+        return ErrorCategory.MODEL_UNAVAILABLE
+    if status in (413, 422) and ("context" in low or "token" in low or "too long" in low or "length" in low):
+        return ErrorCategory.BAD_REQUEST
+    if status == 451 or "content_policy" in low or "safety" in low or "filtered" in low or "harmful" in low:
+        return ErrorCategory.CONTENT_REJECTED
+    if status == 503:
+        return ErrorCategory.PROVIDER_UNAVAILABLE
+    if status in (408, 504):
+        return ErrorCategory.TIMEOUT
+    if status in (500, 502):
+        return ErrorCategory.RETRYABLE_SERVER_ERROR
+    return ErrorCategory.NON_RETRYABLE_ERROR
