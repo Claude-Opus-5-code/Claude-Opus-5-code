@@ -31,6 +31,16 @@ RETRYABLE_DEFAULTS: dict[ErrorCategory, bool] = {
 }
 
 
+def is_retryable(category: ErrorCategory | str) -> bool:
+    """Return canonical retryability for an ErrorCategory or category string."""
+    if isinstance(category, str):
+        try:
+            category = ErrorCategory(category)
+        except ValueError:
+            return False
+    return RETRYABLE_DEFAULTS.get(category, False)
+
+
 def sanitize_provider_code(raw: str | None) -> str | None:
     """Keep short safe diagnostic codes; drop anything resembling internals."""
 
