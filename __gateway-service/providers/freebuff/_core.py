@@ -256,7 +256,14 @@ def stream_text(
 
     res = requests.post(API_CHAT_URL, json=payload, headers=headers, stream=True, timeout=timeout)
     if res.status_code != 200:
-        raise UpstreamFailure("upstream_error", f"HTTP {res.status_code}: {res.text[:200]}")
+        if res.status_code in (401, 403):
+            raise UpstreamFailure("auth_expired", f"HTTP {res.status_code}: {res.text[:200]}")
+        elif res.status_code == 429:
+            raise UpstreamFailure("rate_limited", f"HTTP {res.status_code}: {res.text[:200]}")
+        elif res.status_code in (500, 502, 503):
+            raise UpstreamFailure("retryable_server_error", f"HTTP {res.status_code}: {res.text[:200]}")
+        else:
+            raise UpstreamFailure("non_retryable_error", f"HTTP {res.status_code}: {res.text[:200]}")
 
     for raw_line in res.iter_lines(decode_unicode=False):
         if not raw_line:
