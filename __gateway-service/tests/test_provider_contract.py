@@ -107,3 +107,20 @@ def test_adapter_and_core_contract(slug):
     # Adapter must have error translation helper
     has_err_translator = hasattr(adapter_mod, "_translate_upstream_failure") or hasattr(adapter_mod, "translate_error")
     assert has_err_translator, f"{slug}/adapter.py must implement _translate_upstream_failure"
+
+
+def test_no_rogue_or_uppercase_error_categories():
+    """Ensure no UpstreamFailure uses an uppercase or invalid error category across providers."""
+    from gateway.contracts import ErrorCategory
+    valid_categories = {c.value for c in ErrorCategory}
+
+    import re
+    pat = re.compile(r'UpstreamFailure\(\s*["\']([A-Za-z0-9_]+)["\']')
+    for py_file in PROVIDERS_DIR.rglob("*.py"):
+        content = py_file.read_text(encoding="utf-8", errors="replace")
+        for match in pat.finditer(content):
+            cat = match.group(1)
+            assert cat in valid_categories, (
+                f"[{py_file.name}] Rogue or uppercase error category '{cat}'. "
+                f"Must be one of: {sorted(valid_categories)}"
+            )
