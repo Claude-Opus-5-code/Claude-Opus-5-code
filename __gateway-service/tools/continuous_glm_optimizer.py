@@ -120,9 +120,10 @@ def send_chat_stream(session: requests.Session, prompt: str, thread_id: str | No
     print("\n🧠 [GLM-5.3-Flash Reasoning Stream]:")
     in_reasoning = True
     
-    for line in res.iter_lines(decode_unicode=True):
-        if not line:
+    for raw_line in res.iter_lines(decode_unicode=False):
+        if not raw_line:
             continue
+        line = raw_line.decode("utf-8", errors="replace")
         if line.startswith("data: "):
             raw_data = line[6:].strip()
             if raw_data == "[DONE]" or raw_data == '{"type":"done"}':
